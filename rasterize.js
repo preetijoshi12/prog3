@@ -3,7 +3,7 @@
 const WIN_Z = 0;  
 const WIN_LEFT = 0; const WIN_RIGHT = 1;  
 const WIN_BOTTOM = 0; const WIN_TOP = 1;  
-const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog3/triangles2.json"; // Using triangles2.json as verified!
+const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog3/triangles2.json"; 
 const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.json";
 var Eye = new vec4.fromValues(0.5, 0.5, -0.5, 1.0); 
 
@@ -287,7 +287,7 @@ function setupShaders() {
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
 
-    // Check if checkbox is checked in HTML
+    // Check state of HTML checkbox
     var lightingEnabled = document.getElementById("lightingCheck").checked;
 
     mat3.normalFromMat4(nMatrix, mvMatrix);
