@@ -9,7 +9,7 @@ const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.jso
 /* webgl globals */
 var gl = null; 
 var triangleSets = []; 
-var selectedModelIndex = -1; 
+var selectedModelIndex = -1; // -1 means no model selected
 
 var vertexPositionAttrib; 
 var vertexNormalAttrib;
@@ -113,7 +113,7 @@ function loadTriangles() {
                 shininessBuffer: gl.createBuffer(),
                 triangleBuffer: gl.createBuffer(),
                 triBufferSize: indexArray.length,
-                modelMatrix: mat4.create() 
+                modelMatrix: mat4.create() // Initialize to identity matrix
             };
 
             gl.bindBuffer(gl.ARRAY_BUFFER, setBuffers.vertexBuffer);
@@ -325,21 +325,21 @@ function setupEvents() {
             vec3.add(center, eye, viewZ);
         } else if (key === 'W') {
             let rotMat = mat4.create();
-            mat4.rotate(rotMat, rotMat, rotateStep, viewX);
+            mat4.rotate(rotMat, rotMat, -rotateStep, viewX); // Corrected pitch rotation direction
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
         } else if (key === 'S') {
             let rotMat = mat4.create();
-            mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
+            mat4.rotate(rotMat, rotMat, rotateStep, viewX); // Corrected pitch rotation direction
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
         }
 
-        // Part 5: Interactively select and highlight a model
+        // Part 5: Interactively select and highlight a model using arrow keys and spacebar
         else if (key === 'ArrowRight') {
             if (triangleSets.length > 0) {
                 if (selectedModelIndex >= 0) {
-                    mat4.identity(triangleSets[selectedModelIndex].modelMatrix);
+                    mat4.identity(triangleSets[selectedModelIndex].modelMatrix); // Remove scaling from previous
                 }
                 selectedModelIndex = (selectedModelIndex + 1) % triangleSets.length;
                 mat4.scale(triangleSets[selectedModelIndex].modelMatrix, triangleSets[selectedModelIndex].modelMatrix, [1.2, 1.2, 1.2]);[cite: 11]
@@ -347,7 +347,7 @@ function setupEvents() {
         } else if (key === 'ArrowLeft') {
             if (triangleSets.length > 0) {
                 if (selectedModelIndex >= 0) {
-                    mat4.identity(triangleSets[selectedModelIndex].modelMatrix);
+                    mat4.identity(triangleSets[selectedModelIndex].modelMatrix); // Remove scaling from previous
                 }
                 selectedModelIndex = selectedModelIndex - 1;
                 if (selectedModelIndex < 0) {
@@ -357,7 +357,7 @@ function setupEvents() {
             }
         } else if (key === ' ' || key === 'Spacebar') {
             if (selectedModelIndex >= 0) {
-                mat4.identity(triangleSets[selectedModelIndex].modelMatrix);
+                mat4.identity(triangleSets[selectedModelIndex].modelMatrix); // Reset scaling
             }
             selectedModelIndex = -1;[cite: 11]
         }
