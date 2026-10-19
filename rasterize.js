@@ -5,7 +5,6 @@ const WIN_LEFT = 0; const WIN_RIGHT = 1;
 const WIN_BOTTOM = 0; const WIN_TOP = 1;  
 const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog3/triangles2.json"; 
 const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.json";
-var Eye = new vec4.fromValues(0.5, 0.5, -0.5, 1.0); 
 
 /* webgl globals */
 var gl = null; 
@@ -29,6 +28,11 @@ var mvMatrixUniform, pMatrixUniform, nMatrixUniform, lightingEnabledUniform;
 var mvMatrix = mat4.create();
 var pMatrix = mat4.create();
 var nMatrix = mat3.create();
+
+// Camera Parameters for Part 4
+var eye = vec3.fromValues(0.5, 0.5, -0.5);
+var center = vec3.fromValues(0.5, 0.5, 1.0);
+var up = vec3.fromValues(0, 1, 0);
 
 // ASSIGNMENT HELPER FUNCTIONS
 
@@ -161,7 +165,7 @@ function setupShaders() {
                 // Part 2: Unlit flat diffuse color
                 gl_FragColor = vec4(vDiffuse, 1.0);
             } else {
-                // Part 3: Blinn-Phong lighting model[cite: 8]
+                // Part 3: Blinn-Phong lighting model
                 vec3 lightPosition = vec3(-0.5, 1.5, -0.5);
                 vec3 lightColor = vec3(1.1, 1.1, 1.1);
 
@@ -277,18 +281,82 @@ function setupShaders() {
     var fov = Math.PI / 2; 
     var aspect = gl.canvas.width / gl.canvas.height;
     mat4.perspective(pMatrix, fov, aspect, 0.1, 100.0);
-
-    var eye = vec3.fromValues(0.5, 0.5, -0.5);
-    var center = vec3.fromValues(0.5, 0.5, 1.0);
-    var up = vec3.fromValues(0, 1, 0);
-    mat4.lookAt(mvMatrix, eye, center, up);
 } 
+
+// Part 4: Interactive View Controller Setup
+function setupEvents() {
+    window.addEventListener("keydown", function(event) {
+        var key = event.key;
+        var translateStep = 0.05;
+        var rotateStep = 0.03;
+
+        // Compute viewing coordinate axes
+        var viewZ = vec3.create(); // Forward
+        vec3.subtract(viewZ, center, eye);
+        vec3.normalize(viewZ, viewZ);
+
+        var viewX = vec3.create(); // Side (X)
+        vec3.cross(viewX, viewZ, up);
+        vec3.normalize(viewX, viewX);
+
+        var viewY = vec3.create(); // Up (Y)
+        vec3.cross(viewY, viewX, viewZ);
+        vec3.normalize(viewY, viewY);
+
+        // Translations (a, d, w, s, q, e)
+        if (key === 'a') { // Translate view left along view X
+            vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
+            vec3.scaleAndAdd(center, center, viewX, -translateStep);
+        } else if (key === 'd') { // Translate view right along view X
+            vec3.scaleAndAdd(eye, eye, viewX, translateStep);
+            vec3.scaleAndAdd(center, center, viewX, translateStep);
+        } else if (key === 'w') { // Translate view forward along view Z
+            vec3.scaleAndAdd(eye, eye, viewZ, translateStep);
+            vec3.scaleAndAdd(center, center, viewZ, translateStep);
+        } else if (key === 's') { // Translate view backward along view Z
+            vec3.scaleAndAdd(eye, eye, viewZ, -translateStep);
+            vec3.scaleAndAdd(center, center, viewZ, -translateStep);
+        } else if (key === 'q') { // Translate view up along view Y
+            vec3.scaleAndAdd(eye, eye, viewY, translateStep);
+            vec3.scaleAndAdd(center, center, viewY, translateStep);
+        } else if (key === 'e') { // Translate view down along view Y
+            vec3.scaleAndAdd(eye, eye, viewY, -translateStep);
+            vec3.scaleAndAdd(center, center, viewY, -translateStep);
+        }
+
+        // Rotations (A, D, W, S)
+        else if (key === 'D') { // Rotate view right (yaw) around view Y
+            let rotMat = mat4.create();
+            mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
+            vec3.transformMat4(viewZ, viewZ, rotMat);
+            vec3.add(center, eye, viewZ);
+        } else if (key === 'A') { // Rotate view left (yaw) around view Y
+            let rotMat = mat4.create();
+            mat4.rotate(rotMat, rotMat, rotateStep, viewY);
+            vec3.transformMat4(viewZ, viewZ, rotMat);
+            vec3.add(center, eye, viewZ);
+        } else if (key === 'W') { // Rotate view forward (pitch) around view X
+            let rotMat = mat4.create();
+            mat4.rotate(rotMat, rotMat, rotateStep, viewX);
+            vec3.transformMat4(viewZ, viewZ, rotMat);
+            vec3.add(center, eye, viewZ);
+        } else if (key === 'S') { // Rotate view backward (pitch) around view X
+            let rotMat = mat4.create();
+            mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
+            vec3.transformMat4(viewZ, viewZ, rotMat);
+            vec3.add(center, eye, viewZ);
+        }
+    });
+}
 
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
 
-    // Check state of HTML checkbox
+    // Check state of HTML lighting checkbox
     var lightingEnabled = document.getElementById("lightingCheck").checked;
+
+    // Update model-view matrix dynamically using interactive camera vectors
+    mat4.lookAt(mvMatrix, eye, center, up);
 
     mat3.normalFromMat4(nMatrix, mvMatrix);
 
@@ -325,5 +393,6 @@ function main() {
   setupWebGL(); 
   loadTriangles(); 
   setupShaders(); 
+  setupEvents(); // Initialize keyboard event listeners for Part 4
   renderTriangles(); 
 }
