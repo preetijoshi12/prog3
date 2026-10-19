@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="UTF-8">
-    <title>Prog 2: Rasterization Shell</title>
+<head>
+    <meta charset="utf-8">
+    <title>Prog 3: Rasterization Shell</title>
 
     <script type="text/javascript" src="gl-matrix-min.js"></script>
     <script type="text/javascript" src="rasterize.js"></script>
-  </head>
+</head>
 
-  <body onload="main();">
+<body onload="main();">
+    <div style="margin-bottom: 10px; color: white; font-family: sans-serif;">
+        <input type="checkbox" id="lightingCheck" checked> 
+        <label for="lightingCheck">Blinn-Phong lighting (part 3)</label>
+    </div>
     <canvas id="myWebGLCanvas" width="512" height="512"></canvas>
-  </body>
+</body>
 </html>
