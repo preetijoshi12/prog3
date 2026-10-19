@@ -8,8 +8,8 @@ const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.jso
 
 /* webgl globals */
 var gl = null; 
-var triangleSets = []; // Array holding individual buffers and transform matrices per set
-var selectedModelIndex = -1; // -1 means no model selected
+var triangleSets = []; 
+var selectedModelIndex = -1; 
 
 var vertexPositionAttrib; 
 var vertexNormalAttrib;
@@ -113,7 +113,7 @@ function loadTriangles() {
                 shininessBuffer: gl.createBuffer(),
                 triangleBuffer: gl.createBuffer(),
                 triBufferSize: indexArray.length,
-                modelMatrix: mat4.create() // Initialize to identity matrix
+                modelMatrix: mat4.create() 
             };
 
             gl.bindBuffer(gl.ARRAY_BUFFER, setBuffers.vertexBuffer);
@@ -204,7 +204,6 @@ function setupShaders() {
         varying float vShininess;
 
         void main(void) {
-            // Apply model matrix then view transform
             vec4 vertexPositionEye4 = uMVMatrix * uModelMatrix * vec4(vertexPosition, 1.0);
             vPosition = vertexPositionEye4.xyz / vertexPositionEye4.w;
             
@@ -284,20 +283,18 @@ function setupEvents() {
         var translateStep = 0.05;
         var rotateStep = 0.03;
 
-        // Compute viewing coordinate axes
-        var viewZ = vec3.create(); // Forward
+        var viewZ = vec3.create(); 
         vec3.subtract(viewZ, center, eye);
         vec3.normalize(viewZ, viewZ);
 
-        var viewX = vec3.create(); // Side (X)
+        var viewX = vec3.create(); 
         vec3.cross(viewX, viewZ, up);
         vec3.normalize(viewX, viewX);
 
-        var viewY = vec3.create(); // Up (Y)
+        var viewY = vec3.create(); 
         vec3.cross(viewY, viewX, viewZ);
         vec3.normalize(viewY, viewY);
 
-        // Part 4: Camera Translations
         if (key === 'a') {
             vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
             vec3.scaleAndAdd(center, center, viewX, -translateStep);
@@ -316,10 +313,7 @@ function setupEvents() {
         } else if (key === 'e') {
             vec3.scaleAndAdd(eye, eye, viewY, -translateStep);
             vec3.scaleAndAdd(center, center, viewY, -translateStep);
-        }
-
-        // Part 4: Camera Rotations
-        else if (key === 'D') {
+        } else if (key === 'D') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
@@ -331,12 +325,12 @@ function setupEvents() {
             vec3.add(center, eye, viewZ);
         } else if (key === 'W') {
             let rotMat = mat4.create();
-            mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
+            mat4.rotate(rotMat, rotMat, rotateStep, viewX);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
         } else if (key === 'S') {
             let rotMat = mat4.create();
-            mat4.rotate(rotMat, rotMat, rotateStep, viewX);
+            mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
         }
@@ -344,35 +338,28 @@ function setupEvents() {
         // Part 5: Interactively select and highlight a model
         else if (key === 'ArrowRight') {
             if (triangleSets.length > 0) {
-                // Reset scaling on previous selection
                 if (selectedModelIndex >= 0) {
                     mat4.identity(triangleSets[selectedModelIndex].modelMatrix);
                 }
-                // Move to next set
                 selectedModelIndex = (selectedModelIndex + 1) % triangleSets.length;
-                // Scale new selection by 20% (multiply x, y, z by 1.2)
-                mat4.scale(triangleSets[selectedModelIndex].modelMatrix, triangleSets[selectedModelIndex].modelMatrix, [1.2, 1.2, 1.2]);
+                mat4.scale(triangleSets[selectedModelIndex].modelMatrix, triangleSets[selectedModelIndex].modelMatrix, [1.2, 1.2, 1.2]);[cite: 11]
             }
         } else if (key === 'ArrowLeft') {
             if (triangleSets.length > 0) {
-                // Reset scaling on previous selection
                 if (selectedModelIndex >= 0) {
                     mat4.identity(triangleSets[selectedModelIndex].modelMatrix);
                 }
-                // Move to previous set (or wrap around)
                 selectedModelIndex = selectedModelIndex - 1;
                 if (selectedModelIndex < 0) {
                     selectedModelIndex = triangleSets.length - 1;
                 }
-                // Scale new selection by 20% (multiply x, y, z by 1.2)
-                mat4.scale(triangleSets[selectedModelIndex].modelMatrix, triangleSets[selectedModelIndex].modelMatrix, [1.2, 1.2, 1.2]);
+                mat4.scale(triangleSets[selectedModelIndex].modelMatrix, triangleSets[selectedModelIndex].modelMatrix, [1.2, 1.2, 1.2]);[cite: 11]
             }
         } else if (key === ' ' || key === 'Spacebar') {
-            // Deselect and remove highlighting[cite: 11]
             if (selectedModelIndex >= 0) {
                 mat4.identity(triangleSets[selectedModelIndex].modelMatrix);
             }
-            selectedModelIndex = -1;
+            selectedModelIndex = -1;[cite: 11]
         }
     });
 }
@@ -386,11 +373,9 @@ function renderTriangles() {
     gl.uniformMatrix4fv(pMatrixUniform, false, pMatrix);
     gl.uniform1i(lightingEnabledUniform, lightingEnabled ? 1 : 0);
 
-    // Iterate through each triangle set and render individually with its model matrix
     for (var i = 0; i < triangleSets.length; i++) {
         var set = triangleSets[i];
 
-        // Combine view matrix and individual model matrix
         var modelViewMatrix = mat4.create();
         mat4.multiply(modelViewMatrix, mvMatrix, set.modelMatrix);
 
@@ -415,7 +400,7 @@ function renderTriangles() {
         gl.bindBuffer(gl.ARRAY_BUFFER, set.specularBuffer);
         gl.vertexAttribPointer(vertexSpecularAttrib, 3, gl.FLOAT, false, 0, 0);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, shininessBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, set.shininessBuffer);
         gl.vertexAttribPointer(vertexShininessAttrib, 1, gl.FLOAT, false, 0, 0);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, set.triangleBuffer);
