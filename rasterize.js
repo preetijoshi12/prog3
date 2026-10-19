@@ -8,13 +8,8 @@ const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.jso
 
 /* webgl globals */
 var gl = null; 
-var vertexBuffer; 
-var normalBuffer; 
-var colorBuffer;  
-var triangleBuffer; 
-var triBufferSize; 
-
-var ambientBuffer, specularBuffer, shininessBuffer;
+var triangleSets = []; // Array holding individual buffers and transform matrices per set
+var selectedModelIndex = -1; // -1 means no model selected
 
 var vertexPositionAttrib; 
 var vertexNormalAttrib;
@@ -24,7 +19,7 @@ var vertexSpecularAttrib;
 var vertexShininessAttrib;
 
 // Matrix Uniforms and Objects
-var mvMatrixUniform, pMatrixUniform, nMatrixUniform, lightingEnabledUniform;
+var mvMatrixUniform, pMatrixUniform, nMatrixUniform, modelMatrixUniform, lightingEnabledUniform;
 var mvMatrix = mat4.create();
 var pMatrix = mat4.create();
 var nMatrix = mat3.create();
@@ -78,24 +73,23 @@ function setupWebGL() {
     } 
 } 
 
-// read triangles in, load them into webgl buffers
+// Read triangles in and load each set into separate WebGL buffers with its own model matrix
 function loadTriangles() {
-    var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
+    var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL, "triangles");
     if (inputTriangles != null) { 
-        var coordArray = []; 
-        var normalArray = []; 
-        var ambientArray = [];
-        var diffuseArray = []; 
-        var specularArray = [];
-        var shininessArray = [];
-        var indexArray = []; 
-        var indexOffset = 0; 
-        
-        for (var whichSet=0; whichSet<inputTriangles.length; whichSet++) {
+        for (var whichSet = 0; whichSet < inputTriangles.length; whichSet++) {
             var triangleSet = inputTriangles[whichSet];
             var mat = triangleSet.material;
             
-            for (var whichSetVert=0; whichSetVert<triangleSet.vertices.length; whichSetVert++){
+            var coordArray = []; 
+            var normalArray = []; 
+            var ambientArray = [];
+            var diffuseArray = []; 
+            var specularArray = [];
+            var shininessArray = [];
+            var indexArray = []; 
+            
+            for (var whichSetVert = 0; whichSetVert < triangleSet.vertices.length; whichSetVert++) {
                 coordArray.push(triangleSet.vertices[whichSetVert][0], triangleSet.vertices[whichSetVert][1], triangleSet.vertices[whichSetVert][2]);
                 normalArray.push(triangleSet.normals[whichSetVert][0], triangleSet.normals[whichSetVert][1], triangleSet.normals[whichSetVert][2]);
                 
@@ -105,48 +99,51 @@ function loadTriangles() {
                 shininessArray.push(mat.n);
             }
 
-            for (var whichSetTri=0; whichSetTri<triangleSet.triangles.length; whichSetTri++) {
+            for (var whichSetTri = 0; whichSetTri < triangleSet.triangles.length; whichSetTri++) {
                 var tri = triangleSet.triangles[whichSetTri];
-                indexArray.push(tri[0] + indexOffset, tri[1] + indexOffset, tri[2] + indexOffset);
+                indexArray.push(tri[0], tri[1], tri[2]);
             }
             
-            indexOffset += triangleSet.vertices.length;
-        } 
-        
-        triBufferSize = indexArray.length;
-        console.log("Loaded " + inputTriangles.length + " triangle sets.");
+            var setBuffers = {
+                vertexBuffer: gl.createBuffer(),
+                normalBuffer: gl.createBuffer(),
+                ambientBuffer: gl.createBuffer(),
+                colorBuffer: gl.createBuffer(),
+                specularBuffer: gl.createBuffer(),
+                shininessBuffer: gl.createBuffer(),
+                triangleBuffer: gl.createBuffer(),
+                triBufferSize: indexArray.length,
+                modelMatrix: mat4.create() // Initialize to identity matrix
+            };
 
-        vertexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(coordArray), gl.STATIC_DRAW);
-        
-        normalBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normalArray), gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, setBuffers.vertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(coordArray), gl.STATIC_DRAW);
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, setBuffers.normalBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normalArray), gl.STATIC_DRAW);
 
-        ambientBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, ambientBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(ambientArray), gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, setBuffers.ambientBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(ambientArray), gl.STATIC_DRAW);
 
-        colorBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(diffuseArray), gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, setBuffers.colorBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(diffuseArray), gl.STATIC_DRAW);
 
-        specularBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, specularBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(specularArray), gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, setBuffers.specularBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(specularArray), gl.STATIC_DRAW);
 
-        shininessBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, shininessBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shininessArray), gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, setBuffers.shininessBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shininessArray), gl.STATIC_DRAW);
 
-        triangleBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexArray), gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, setBuffers.triangleBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexArray), gl.STATIC_DRAW);
+
+            triangleSets.push(setBuffers);
+        }
+        console.log("Loaded " + triangleSets.length + " triangle sets with individual buffers.");
     } 
 } 
 
-// setup the webGL shaders with toggleable Blinn-Phong lighting
+// Setup shaders with uModelMatrix support for Part 5
 function setupShaders() {
     var fShaderCode = `
         precision mediump float;
@@ -162,10 +159,8 @@ function setupShaders() {
 
         void main(void) {
             if (!uLightingEnabled) {
-                // Part 2: Unlit flat diffuse color
                 gl_FragColor = vec4(vDiffuse, 1.0);
             } else {
-                // Part 3: Blinn-Phong lighting model
                 vec3 lightPosition = vec3(-0.5, 1.5, -0.5);
                 vec3 lightColor = vec3(1.1, 1.1, 1.1);
 
@@ -174,14 +169,10 @@ function setupShaders() {
                 vec3 V = normalize(-vPosition); 
                 vec3 H = normalize(L + V);
 
-                // Ambient
                 vec3 ambient = vAmbient * lightColor;
-
-                // Diffuse
                 float diff = max(dot(N, L), 0.0);
                 vec3 diffuse = diff * (vDiffuse * lightColor);
 
-                // Specular (Blinn-Phong)
                 float spec = pow(max(dot(N, H), 0.0), vShininess);
                 if (diff <= 0.0) spec = 0.0;
                 vec3 specular = spec * (vSpecular * lightColor);
@@ -200,6 +191,7 @@ function setupShaders() {
         attribute vec3 vertexSpecular;
         attribute float vertexShininess;
 
+        uniform mat4 uModelMatrix;
         uniform mat4 uMVMatrix;
         uniform mat4 uPMatrix;
         uniform mat3 uNMatrix;
@@ -212,7 +204,8 @@ function setupShaders() {
         varying float vShininess;
 
         void main(void) {
-            vec4 vertexPositionEye4 = uMVMatrix * vec4(vertexPosition, 1.0);
+            // Apply model matrix then view transform
+            vec4 vertexPositionEye4 = uMVMatrix * uModelMatrix * vec4(vertexPosition, 1.0);
             vPosition = vertexPositionEye4.xyz / vertexPositionEye4.w;
             
             vNormal = uNMatrix * vertexNormal;
@@ -267,6 +260,7 @@ function setupShaders() {
                 vertexShininessAttrib = gl.getAttribLocation(shaderProgram, "vertexShininess");
                 gl.enableVertexAttribArray(vertexShininessAttrib);
 
+                modelMatrixUniform = gl.getUniformLocation(shaderProgram, "uModelMatrix");
                 mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
                 pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
                 nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
@@ -283,7 +277,7 @@ function setupShaders() {
     mat4.perspective(pMatrix, fov, aspect, 0.1, 100.0);
 } 
 
-// Part 4: Interactive View Controller Setup
+// Event listener for Part 4 (Camera) and Part 5 (Model Selection & Highlighting)
 function setupEvents() {
     window.addEventListener("keydown", function(event) {
         var key = event.key;
@@ -303,48 +297,82 @@ function setupEvents() {
         vec3.cross(viewY, viewX, viewZ);
         vec3.normalize(viewY, viewY);
 
-        // Translations (a, d, w, s, q, e)
-        if (key === 'a') { // Translate view left along view X
+        // Part 4: Camera Translations
+        if (key === 'a') {
             vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
             vec3.scaleAndAdd(center, center, viewX, -translateStep);
-        } else if (key === 'd') { // Translate view right along view X
+        } else if (key === 'd') {
             vec3.scaleAndAdd(eye, eye, viewX, translateStep);
             vec3.scaleAndAdd(center, center, viewX, translateStep);
-        } else if (key === 'w') { // Translate view forward along view Z
+        } else if (key === 'w') {
             vec3.scaleAndAdd(eye, eye, viewZ, translateStep);
             vec3.scaleAndAdd(center, center, viewZ, translateStep);
-        } else if (key === 's') { // Translate view backward along view Z
+        } else if (key === 's') {
             vec3.scaleAndAdd(eye, eye, viewZ, -translateStep);
             vec3.scaleAndAdd(center, center, viewZ, -translateStep);
-        } else if (key === 'q') { // Translate view up along view Y
+        } else if (key === 'q') {
             vec3.scaleAndAdd(eye, eye, viewY, translateStep);
             vec3.scaleAndAdd(center, center, viewY, translateStep);
-        } else if (key === 'e') { // Translate view down along view Y
+        } else if (key === 'e') {
             vec3.scaleAndAdd(eye, eye, viewY, -translateStep);
             vec3.scaleAndAdd(center, center, viewY, -translateStep);
         }
 
-        // Rotations (A, D, W, S)
-        else if (key === 'D') { // Rotate view right (yaw) around view Y
+        // Part 4: Camera Rotations
+        else if (key === 'D') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'A') { // Rotate view left (yaw) around view Y
+        } else if (key === 'A') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'W') { // Rotate view forward (pitch) around view X
-            let rotMat = mat4.create();
-            mat4.rotate(rotMat, rotMat, rotateStep, viewX);
-            vec3.transformMat4(viewZ, viewZ, rotMat);
-            vec3.add(center, eye, viewZ);
-        } else if (key === 'S') { // Rotate view backward (pitch) around view X
+        } else if (key === 'W') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
+        } else if (key === 'S') {
+            let rotMat = mat4.create();
+            mat4.rotate(rotMat, rotMat, rotateStep, viewX);
+            vec3.transformMat4(viewZ, viewZ, rotMat);
+            vec3.add(center, eye, viewZ);
+        }
+
+        // Part 5: Interactively select and highlight a model
+        else if (key === 'ArrowRight') {
+            if (triangleSets.length > 0) {
+                // Reset scaling on previous selection
+                if (selectedModelIndex >= 0) {
+                    mat4.identity(triangleSets[selectedModelIndex].modelMatrix);
+                }
+                // Move to next set
+                selectedModelIndex = (selectedModelIndex + 1) % triangleSets.length;
+                // Scale new selection by 20% (multiply x, y, z by 1.2)
+                mat4.scale(triangleSets[selectedModelIndex].modelMatrix, triangleSets[selectedModelIndex].modelMatrix, [1.2, 1.2, 1.2]);
+            }
+        } else if (key === 'ArrowLeft') {
+            if (triangleSets.length > 0) {
+                // Reset scaling on previous selection
+                if (selectedModelIndex >= 0) {
+                    mat4.identity(triangleSets[selectedModelIndex].modelMatrix);
+                }
+                // Move to previous set (or wrap around)
+                selectedModelIndex = selectedModelIndex - 1;
+                if (selectedModelIndex < 0) {
+                    selectedModelIndex = triangleSets.length - 1;
+                }
+                // Scale new selection by 20% (multiply x, y, z by 1.2)
+                mat4.scale(triangleSets[selectedModelIndex].modelMatrix, triangleSets[selectedModelIndex].modelMatrix, [1.2, 1.2, 1.2]);
+            }
+        } else if (key === ' ' || key === 'Spacebar') {
+            // Deselect and remove highlighting[cite: 11]
+            if (selectedModelIndex >= 0) {
+                mat4.identity(triangleSets[selectedModelIndex].modelMatrix);
+            }
+            selectedModelIndex = -1;
         }
     });
 }
@@ -352,39 +380,47 @@ function setupEvents() {
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
 
-    // Check state of HTML lighting checkbox
     var lightingEnabled = document.getElementById("lightingCheck").checked;
-
-    // Update model-view matrix dynamically using interactive camera vectors
     mat4.lookAt(mvMatrix, eye, center, up);
 
-    mat3.normalFromMat4(nMatrix, mvMatrix);
-
     gl.uniformMatrix4fv(pMatrixUniform, false, pMatrix);
-    gl.uniformMatrix4fv(mvMatrixUniform, false, mvMatrix);
-    gl.uniformMatrix3fv(nMatrixUniform, false, nMatrix);
     gl.uniform1i(lightingEnabledUniform, lightingEnabled ? 1 : 0);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer); 
-    gl.vertexAttribPointer(vertexPositionAttrib, 3, gl.FLOAT, false, 0, 0); 
+    // Iterate through each triangle set and render individually with its model matrix
+    for (var i = 0; i < triangleSets.length; i++) {
+        var set = triangleSets[i];
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
-    gl.vertexAttribPointer(vertexNormalAttrib, 3, gl.FLOAT, false, 0, 0);
+        // Combine view matrix and individual model matrix
+        var modelViewMatrix = mat4.create();
+        mat4.multiply(modelViewMatrix, mvMatrix, set.modelMatrix);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, ambientBuffer);
-    gl.vertexAttribPointer(vertexAmbientAttrib, 3, gl.FLOAT, false, 0, 0);
+        mat3.normalFromMat4(nMatrix, modelViewMatrix);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-    gl.vertexAttribPointer(vertexDiffuseAttrib, 3, gl.FLOAT, false, 0, 0);
+        gl.uniformMatrix4fv(modelMatrixUniform, false, set.modelMatrix);
+        gl.uniformMatrix4fv(mvMatrixUniform, false, modelViewMatrix);
+        gl.uniformMatrix3fv(nMatrixUniform, false, nMatrix);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, specularBuffer);
-    gl.vertexAttribPointer(vertexSpecularAttrib, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, set.vertexBuffer); 
+        gl.vertexAttribPointer(vertexPositionAttrib, 3, gl.FLOAT, false, 0, 0); 
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, shininessBuffer);
-    gl.vertexAttribPointer(vertexShininessAttrib, 1, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, set.normalBuffer);
+        gl.vertexAttribPointer(vertexNormalAttrib, 3, gl.FLOAT, false, 0, 0);
 
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleBuffer);
-    gl.drawElements(gl.TRIANGLES, triBufferSize, gl.UNSIGNED_SHORT, 0); 
+        gl.bindBuffer(gl.ARRAY_BUFFER, set.ambientBuffer);
+        gl.vertexAttribPointer(vertexAmbientAttrib, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, set.colorBuffer);
+        gl.vertexAttribPointer(vertexDiffuseAttrib, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, set.specularBuffer);
+        gl.vertexAttribPointer(vertexSpecularAttrib, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, shininessBuffer);
+        gl.vertexAttribPointer(vertexShininessAttrib, 1, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, set.triangleBuffer);
+        gl.drawElements(gl.TRIANGLES, set.triBufferSize, gl.UNSIGNED_SHORT, 0); 
+    }
 
     requestAnimationFrame(renderTriangles);
 } 
@@ -393,6 +429,6 @@ function main() {
   setupWebGL(); 
   loadTriangles(); 
   setupShaders(); 
-  setupEvents(); // Initialize keyboard event listeners for Part 4
+  setupEvents(); 
   renderTriangles(); 
 }
