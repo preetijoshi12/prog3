@@ -379,7 +379,7 @@ function setupEvents() {
             if (key === 'k') { // Translate selection left along view X
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewX, -translateStep);
                 event.preventDefault();
-            } else if (key === ';') { // Translate selection right along view X
+            } else if (key === ';' || key === ',') { // Translate selection right along view X
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewX, translateStep);
                 event.preventDefault();
             } else if (key === 'o') { // Translate selection forward along view Z
@@ -399,7 +399,7 @@ function setupEvents() {
                 mat4.rotate(rotMat, rotMat, rotateStep, viewY);
                 mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
                 event.preventDefault();
-            } else if (key === ':') { // Rotate selection right around view Y (yaw)
+            } else if (key === ':' || (key === 'K' && event.shiftKey)) { // Rotate selection right around view Y (yaw)
                 let rotMat = mat4.create();
                 mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
                 mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
@@ -443,8 +443,7 @@ function renderTriangles() {
     for (var i = 0; i < triangleSets.length; i++) {
         var tSet = triangleSets[i];
 
-        // Compose model matrix: Translation * Rotation * Highlighting Scale (if selected)
-        // This ensures the model rotates around itself and doesn't shift when scaling.
+        // Compose model matrix: Translation * Rotation * Highlighting Scale
         mat4.identity(tSet.mMatrix);
         mat4.translate(tSet.mMatrix, tSet.mMatrix, tSet.translation);
         mat4.multiply(tSet.mMatrix, tSet.mMatrix, tSet.rotation);
