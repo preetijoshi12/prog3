@@ -135,7 +135,7 @@ function loadTriangles() {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tBuffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexArray), gl.STATIC_DRAW);
 
-            // Store each triangle set with buffers, translation, rotation, and highlight status
+            // Store each triangle set with individual translation vector, orientation matrix, and highlight state
             triangleSets.push({
                 vertexBuffer: vBuffer,
                 normalBuffer: nBuffer,
@@ -145,8 +145,8 @@ function loadTriangles() {
                 shininessBuffer: shineBuffer,
                 triangleBuffer: tBuffer,
                 triBufferSize: indexArray.length,
-                translation: vec3.create(), 
-                rotation: vec3.create(),    
+                translation: vec3.create(),         // Position offset
+                rotationMatrix: mat4.create(),      // Accumulated rotation matrix
                 isHighlighted: false
             });
         } 
@@ -389,33 +389,46 @@ function setupEvents() {
             var modelTranslateStep = 0.05;
             var modelRotateStep = 0.05;
 
-            if (key === 'k') { // Translate selection left along view X
+            // Translations along view axes
+            if (key === 'k') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, -modelTranslateStep);
-            } else if (key === ';') { // Translate selection right along view X
+            } else if (key === ';') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, modelTranslateStep);
-            } else if (key === 'o') { // Translate selection forward along view Z
+            } else if (key === 'o') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, modelTranslateStep);
-            } else if (key === 'l') { // Translate selection backward along view Z
+            } else if (key === 'l') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, -modelTranslateStep);
-            } else if (key === 'L') { // Rotate selection backward (pitch) around view X
-                curSet.rotation[0] -= modelRotateStep;
-            } else if (key === 'i') { // Translate selection up along view Y
+            } else if (key === 'i') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, modelTranslateStep);
-            } else if (key === 'p') { // Translate selection down along view Y
+            } else if (key === 'p') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, -modelTranslateStep);
             } 
             
-            // Rotations
-            else if (key === 'K') { // Rotate selection left (yaw) around view Y
-                curSet.rotation[1] += modelRotateStep;
-            } else if (key === ':') { // Rotate selection right (yaw) around view Y
-                curSet.rotation[1] -= modelRotateStep;
-            } else if (key === 'O') { // Rotate selection forward (pitch) around view X
-                curSet.rotation[0] += modelRotateStep;
-            } else if (key === 'I') { // Rotate selection clockwise (roll) around view Z
-                curSet.rotation[2] += modelRotateStep;
-            } else if (key === 'P') { // Rotate selection counterclockwise (roll) around view Z
-                curSet.rotation[2] -= modelRotateStep;
+            // Rotations around view axes (applied directly into the rotation matrix for smooth local spinning)
+            else if (key === 'K') { // Yaw left around view Y[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, modelRotateStep, viewY);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === ':') { // Yaw right around view Y[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, -modelRotateStep, viewY);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === 'O') { // Pitch forward around view X[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, modelRotateStep, viewX);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === 'L') { // Pitch backward around view X[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, -modelRotateStep, viewX);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === 'I') { // Roll clockwise around view Z[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, modelRotateStep, viewZ);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === 'P') { // Roll counterclockwise around view Z[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, -modelRotateStep, viewZ);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
             }
         }
     });
@@ -436,18 +449,16 @@ function renderTriangles() {
         var tSet = triangleSets[i];
 
         // Construct model matrix (mMatrix): 
-        // Order: Translation first, then Rotation (so it rotates around itself), then Scale highlight.
+        // Order: Translation -> Accumulated Rotation Matrix -> Highlight Scale[cite: 6]
         var mMatrix = mat4.create();
         
-        // 1. Apply translation offset
+        // 1. Translate to object position
         mat4.translate(mMatrix, mMatrix, tSet.translation);
         
-        // 2. Apply rotations around local/view axes (Pitch, Yaw, Roll)
-        mat4.rotateX(mMatrix, mMatrix, tSet.rotation[0]);
-        mat4.rotateY(mMatrix, mMatrix, tSet.rotation[1]);
-        mat4.rotateZ(mMatrix, mMatrix, tSet.rotation[2]);
+        // 2. Apply accumulated rotation matrix (so it rotates around its own center)[cite: 6]
+        mat4.multiply(mMatrix, mMatrix, tSet.rotationMatrix);
 
-        // 3. Apply 20% highlight scaling if selected
+        // 3. Apply 20% highlight scale if selected[cite: 4]
         if (tSet.isHighlighted) {
             mat4.scale(mMatrix, mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
         }
