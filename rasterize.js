@@ -49,6 +49,7 @@ var defaultCenter = vec3.clone(center);
 
 // --- PART 10: CUSTOM GEOMETRY & SKETCH ANIMATION GLOBALS ---
 var isFootballMode = false;
+var isKickAnimating = false; // Triggered by 'g' key
 var rollDistance = 0.0;     // Ball roll progress toward goal
 var rollAngle = 0.0;        // Ball rotation angle for rolling
 
@@ -258,20 +259,20 @@ function buildPart10CustomScene() {
     // 0: Ball (Sphere)
     customSceneSets.push(createSphereMesh([0.9, 0.9, 0.9], 0.08, 16, 16));
     // 1: Kicker Head
-    customSceneSets.push(createSphereMesh([0.8, 0.6, 0.4], 0.07, 12, 12));
+    customSceneSets.push(createSphereMesh([0.8, 0.6, 0.4], 0.08, 12, 12));
     // 2: Torso (Red Shirt)
     customSceneSets.push(createBoxMesh([0.6, 0.15, 0.15]));
-    // 3: Left Arm (Raised)
+    // 3: Left Arm
     customSceneSets.push(createBoxMesh([0.6, 0.15, 0.15]));
-    // 4: Right Arm (Raised)
+    // 4: Right Arm
     customSceneSets.push(createBoxMesh([0.6, 0.15, 0.15]));
     // 5: Left Leg (Blue Pants)
     customSceneSets.push(createBoxMesh([0.1, 0.1, 0.6]));
     // 6: Right Kicking Leg (Blue Pants)
     customSceneSets.push(createBoxMesh([0.1, 0.1, 0.6]));
-    // 7: Goalpost Left Post
+    // 7: Goalpost Left
     customSceneSets.push(createBoxMesh([0.95, 0.95, 0.95]));
-    // 8: Goalpost Right Post
+    // 8: Goalpost Right
     customSceneSets.push(createBoxMesh([0.95, 0.95, 0.95]));
     // 9: Goalpost Top Bar
     customSceneSets.push(createBoxMesh([0.95, 0.95, 0.95]));
@@ -544,11 +545,12 @@ function setupEvents() {
             isFootballMode = !isFootballMode;
             rollDistance = 0.0;
             rollAngle = 0.0;
+            isKickAnimating = false;
 
             if (isFootballMode) {
-                // Raised Camera Angle looking down at goalpost and ball
-                eye = vec3.fromValues(0.5, 0.7, -0.4);
-                center = vec3.fromValues(0.5, 0.2, 2.0);
+                // Adjust Camera to Match Sketch Perspective (Behind & Beside Kicker)
+                eye = vec3.fromValues(0.7, 0.45, 0.0);
+                center = vec3.fromValues(0.5, 0.25, 2.0);
             } else {
                 // Restore Default Camera
                 eye = vec3.clone(defaultEye);
@@ -559,20 +561,12 @@ function setupEvents() {
             return;
         }
 
-        // --- PART 10: STEPWISE 'g' / 'G' KEY PRESS TO ADVANCE BALL TOWARD GOAL ---
+        // --- PART 10: INTERACTIVE 'g' KEY TO KICK BALL TO GOAL ---
         if ((key === 'g' || key === 'G') && isFootballMode) {
-            var targetZ = 1.6; // Maximum distance inside goal post
-            var stepAmount = 0.1; // Distance advanced per key press
-            
-            if (rollDistance < targetZ) {
-                rollDistance += stepAmount;
-                rollAngle += 0.8; // Spin ball as it advances
-            } else {
-                // Reset ball position if pressed at maximum distance
-                rollDistance = 0.0;
-                rollAngle = 0.0;
-            }
-            console.log("Ball position updated: rollDistance = " + rollDistance.toFixed(2));
+            isKickAnimating = true;
+            rollDistance = 0.0;
+            rollAngle = 0.0;
+            console.log("Ball Kicked!");
             event.preventDefault();
             return;
         }
@@ -719,6 +713,17 @@ function renderTriangles() {
 
     mat4.lookAt(vMatrix, eye, center, up);
 
+    // Ball Kick & Roll Animation Progress
+    if (isFootballMode && isKickAnimating) {
+        var targetZ = 1.35; // Stop point inside goal post
+        if (rollDistance < targetZ) {
+            rollDistance += 0.02;
+            rollAngle += 0.22;
+        } else {
+            isKickAnimating = false; // Ball reached goal post
+        }
+    }
+
     var numLightsToPass = Math.min(inputLights.length, MAX_LIGHTS);
     gl.uniform1i(numLightsUniform, numLightsToPass);
     gl.uniformMatrix4fv(vMatrixUniform, false, vMatrix);
@@ -739,52 +744,52 @@ function renderTriangles() {
         var mMatrix = mat4.create();
 
         if (isFootballMode) {
-            // --- SKETCH-ACCURATE UNBLOCKED VIEW LAYOUT ---
+            // --- SKETCH-ACCURATE MODEL MATRIX LAYOUT ---
             if (i === 0) {
-                // 0: Ball - Shifted to center-left (X = 0.45), rolls straight to goal step-by-step
-                var ballZ = 0.2 + rollDistance;
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.45, 0.08, ballZ));
+                // 0: Ball - Starts in front of kicker, rolls to goal when 'g' is pressed
+                var ballZ = 0.5 + rollDistance;
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.08, ballZ));
                 mat4.rotateX(mMatrix, mMatrix, rollAngle);
             } else if (i === 1) {
-                // 1: Head (Right side X = 0.85)
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.85, 0.48, 0.2));
+                // 1: Head
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.65, 0.48, 0.3));
             } else if (i === 2) {
                 // 2: Torso (Red Shirt)
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.85, 0.32, 0.2));
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.65, 0.32, 0.3));
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.12, 0.22, 0.1));
             } else if (i === 3) {
                 // 3: Left Arm (Raised)
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.76, 0.38, 0.2));
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.58, 0.38, 0.3));
                 mat4.rotateZ(mMatrix, mMatrix, 0.6);
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.04, 0.18, 0.04));
             } else if (i === 4) {
                 // 4: Right Arm (Raised)
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.94, 0.38, 0.2));
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.72, 0.38, 0.3));
                 mat4.rotateZ(mMatrix, mMatrix, -0.6);
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.04, 0.18, 0.04));
             } else if (i === 5) {
                 // 5: Left Leg (Standing Leg)
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.80, 0.12, 0.2));
-                mat4.rotateZ(mMatrix, mMatrix, 0.15);
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.61, 0.12, 0.3));
+                mat4.rotateZ(mMatrix, mMatrix, 0.2);
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.06, 0.22, 0.06));
             } else if (i === 6) {
-                // 6: Right Leg (Kicking Leg - Swings as ball advances)
-                var legSwing = Math.min(rollDistance * 2.0, 0.8);
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.90, 0.12, 0.2));
+                // 6: Right Leg (Kicking Leg - Swings forward when 'g' pressed)
+                var legSwing = isKickAnimating ? Math.sin(Math.min(rollDistance * 4.0, Math.PI / 2)) * 0.8 : 0.0;
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.69, 0.12, 0.3));
                 mat4.rotateX(mMatrix, mMatrix, -legSwing);
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.06, 0.22, 0.06));
             } else if (i === 7) {
                 // 7: Goalpost Left Post
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.15, 0.28, 1.8));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.03, 0.5, 0.03));
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.3, 0.25, 1.9));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.03, 0.45, 0.03));
             } else if (i === 8) {
                 // 8: Goalpost Right Post
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.75, 0.28, 1.8));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.03, 0.5, 0.03));
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.7, 0.25, 1.9));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.03, 0.45, 0.03));
             } else if (i === 9) {
                 // 9: Goalpost Top Bar
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.45, 0.53, 1.8));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.63, 0.03, 0.03));
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.47, 1.9));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.43, 0.03, 0.03));
             } else if (i === 10) {
                 // 10: Pitch Turf Ground
                 mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, -0.01, 1.0));
