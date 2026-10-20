@@ -1,16 +1,14 @@
 /* GLOBAL CONSTANTS AND VARIABLES */
 
-var WIN_Z = 0;  
-var WIN_LEFT = 0; var WIN_RIGHT = 1;  
-var WIN_BOTTOM = 0; var WIN_TOP = 1;  
+const WIN_Z = 0;  
+const WIN_LEFT = 0; const WIN_RIGHT = 1;  
+const WIN_BOTTOM = 0; const WIN_TOP = 1;  
 
 const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog3/triangles2.json"; 
 const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.json";
-const INPUT_LIGHTS_URL = "https://ncsucgclass.github.io/prog3/lights.json"; // Part 7: Lights JSON URL
 
 /* webgl globals */
 var gl = null; 
-var lights = []; // Part 7: Array to hold loaded lights
 
 var vertexPositionAttrib; 
 var vertexNormalAttrib;
@@ -24,14 +22,6 @@ var mvMatrixUniform, pMatrixUniform, nMatrixUniform, lightingEnabledUniform;
 var mvMatrix = mat4.create();
 var pMatrix = mat4.create();
 var nMatrix = mat3.create();
-
-// Lighting Uniforms (Part 7: supports multiple lights)
-var numLightsUniform;
-var lightPositionUniforms = [];
-var lightAmbientUniforms = [];
-var lightDiffuseUniforms = [];
-var lightSpecularUniforms = [];
-const MAX_LIGHTS = 10;
 
 // Triangle Sets array and selection state for Parts 5 & 6
 var triangleSets = [];
@@ -76,8 +66,6 @@ function setupWebGL() {
       if (gl == null) {
         throw "unable to create gl context -- is your browser gl ready?";
       } else {
-         // Part 7: Ensure initial viewport matches canvas dimensions
-         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0.0, 0.0, 0.0, 1.0); 
         gl.clearDepth(1.0); 
         gl.enable(gl.DEPTH_TEST); 
@@ -87,15 +75,6 @@ function setupWebGL() {
       console.log(e);
     } 
 } 
-
-// Part 7: Load lights from lights.json
-function loadLights() {
-    var inputLights = getJSONFile(INPUT_LIGHTS_URL, "lights");
-    if (inputLights != null) {
-        lights = inputLights;
-        console.log("Loaded " + lights.length + " lights.");
-    }
-}
 
 // read triangles in, load them into webgl buffers
 function loadTriangles() {
@@ -156,6 +135,7 @@ function loadTriangles() {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tBuffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexArray), gl.STATIC_DRAW);
 
+            // Store each triangle set with individual translation vector, orientation matrix, and highlight state
             triangleSets.push({
                 vertexBuffer: vBuffer,
                 normalBuffer: nBuffer,
@@ -165,16 +145,17 @@ function loadTriangles() {
                 shininessBuffer: shineBuffer,
                 triangleBuffer: tBuffer,
                 triBufferSize: indexArray.length,
-                mMatrix: mat4.create(),
-                translation: vec3.create(),
-                rotation: mat4.create()
+                translation: vec3.create(),         // Position offset
+                rotationMatrix: mat4.create(),      // Accumulated rotation matrix
+                isHighlighted: false
             });
         } 
+        
         console.log("Loaded " + triangleSets.length + " triangle sets.");
     } 
 } 
 
-// setup the webGL shaders with toggleable multi-light Blinn-Phong lighting (Part 7)
+// setup the webGL shaders with toggleable Blinn-Phong lighting
 function setupShaders() {
     var fShaderCode = `
         precision mediump float;
@@ -188,46 +169,33 @@ function setupShaders() {
 
         uniform bool uLightingEnabled;
 
-        // Part 7: Multiple lights uniforms
-        #define MAX_LIGHTS 10
-        uniform int uNumLights;
-        uniform vec3 uLightPosition[MAX_LIGHTS];
-        uniform vec3 uLightAmbient[MAX_LIGHTS];
-        uniform vec3 uLightDiffuse[MAX_LIGHTS];
-        uniform vec3 uLightSpecular[MAX_LIGHTS];
-
         void main(void) {
             if (!uLightingEnabled) {
+                // Part 2: Unlit flat diffuse color
                 gl_FragColor = vec4(vDiffuse, 1.0);
             } else {
+                // Part 3: Blinn-Phong lighting model
+                vec3 lightPosition = vec3(-0.5, 1.5, -0.5);
+                vec3 lightColor = vec3(1.1, 1.1, 1.1);
+
                 vec3 N = normalize(vNormal);
+                vec3 L = normalize(lightPosition - vPosition);
                 vec3 V = normalize(-vPosition); 
+                vec3 H = normalize(L + V);
 
-                vec3 finalColor = vec3(0.0, 0.0, 0.0);
+                // Ambient
+                vec3 ambient = vAmbient * lightColor;
 
-                for (int i = 0; i < MAX_LIGHTS; i++) {
-                    if (i >= uNumLights) break;
+                // Diffuse
+                float diff = max(dot(N, L), 0.0);
+                vec3 diffuse = diff * (vDiffuse * lightColor);
 
-                    vec3 L = normalize(uLightPosition[i] - vPosition);
-                    vec3 H = normalize(L + V);
+                // Specular (Blinn-Phong)
+                float spec = pow(max(dot(N, H), 0.0), vShininess);
+                if (diff <= 0.0) spec = 0.0;
+                vec3 specular = spec * (vSpecular * lightColor);
 
-                    // Ambient
-                    vec3 ambient = vAmbient * uLightAmbient[i];
-
-                    // Diffuse
-                    float diff = max(dot(N, L), 0.0);
-                    vec3 diffuse = diff * (vDiffuse * uLightDiffuse[i]);
-
-                    // Specular (Blinn-Phong)
-                    float spec = 0.0;
-                    if (diff > 0.0) {
-                        spec = pow(max(dot(N, H), 0.0), vShininess);
-                    }
-                    vec3 specular = spec * (vSpecular * uLightSpecular[i]);
-
-                    finalColor += (ambient + diffuse + specular);
-                }
-
+                vec3 finalColor = ambient + diffuse + specular;
                 gl_FragColor = vec4(finalColor, 1.0);
             }
         }
@@ -312,15 +280,6 @@ function setupShaders() {
                 pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
                 nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
                 lightingEnabledUniform = gl.getUniformLocation(shaderProgram, "uLightingEnabled");
-
-                // Part 7: Get uniform locations for multiple lights
-                numLightsUniform = gl.getUniformLocation(shaderProgram, "uNumLights");
-                for (var i = 0; i < MAX_LIGHTS; i++) {
-                    lightPositionUniforms.push(gl.getUniformLocation(shaderProgram, "uLightPosition[" + i + "]"));
-                    lightAmbientUniforms.push(gl.getUniformLocation(shaderProgram, "uLightAmbient[" + i + "]"));
-                    lightDiffuseUniforms.push(gl.getUniformLocation(shaderProgram, "uLightDiffuse[" + i + "]"));
-                    lightSpecularUniforms.push(gl.getUniformLocation(shaderProgram, "uLightSpecular[" + i + "]"));
-                }
             }
         }
     } 
@@ -328,141 +287,148 @@ function setupShaders() {
         console.log(e);
     }
 
-    // Part 7: Flexible projection using mat4.frustum based on window parameters in view space
-    updateProjectionMatrix();
+    var fov = Math.PI / 2; 
+    var aspect = gl.canvas.width / gl.canvas.height;
+    mat4.perspective(pMatrix, fov, aspect, 0.1, 100.0);
 } 
 
-// Part 7: Helper function to update projection matrix and viewport dynamically
-function updateProjectionMatrix() {
-    mat4.frustum(pMatrix, WIN_LEFT, WIN_RIGHT, WIN_BOTTOM, WIN_TOP, 0.1, 100.0);
-}
-
+// Keyboard Event Handlers for Parts 4, 5, and 6
 function setupEvents() {
     window.addEventListener("keydown", function(event) {
         var key = event.key;
         var translateStep = 0.05;
         var rotateStep = 0.03;
 
-        var viewZ = vec3.create(); 
+        // Compute viewing coordinate axes
+        var viewZ = vec3.create(); // Forward
         vec3.subtract(viewZ, center, eye);
         vec3.normalize(viewZ, viewZ);
 
-        var viewX = vec3.create(); 
+        var viewX = vec3.create(); // Side (X)
         vec3.cross(viewX, viewZ, up);
         vec3.normalize(viewX, viewX);
 
-        var viewY = vec3.create(); 
+        var viewY = vec3.create(); // Up (Y)
         vec3.cross(viewY, viewX, viewZ);
         vec3.normalize(viewY, viewY);
 
-        if (key === 'd') { 
+        // --- CAMERA TRANSLATIONS (a, d, w, s, q, e) ---
+        if (key === 'a') {
             vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
             vec3.scaleAndAdd(center, center, viewX, -translateStep);
-        } else if (key === 'a') { 
+        } else if (key === 'd') {
             vec3.scaleAndAdd(eye, eye, viewX, translateStep);
             vec3.scaleAndAdd(center, center, viewX, translateStep);
-        } else if (key === 'w') { 
+        } else if (key === 'w') {
             vec3.scaleAndAdd(eye, eye, viewZ, translateStep);
             vec3.scaleAndAdd(center, center, viewZ, translateStep);
-        } else if (key === 's') { 
+        } else if (key === 's') {
             vec3.scaleAndAdd(eye, eye, viewZ, -translateStep);
             vec3.scaleAndAdd(center, center, viewZ, -translateStep);
-        } else if (key === 'e') { 
+        } else if (key === 'q') {
             vec3.scaleAndAdd(eye, eye, viewY, translateStep);
             vec3.scaleAndAdd(center, center, viewY, translateStep);
-        } else if (key === 'q') { 
+        } else if (key === 'e') {
             vec3.scaleAndAdd(eye, eye, viewY, -translateStep);
             vec3.scaleAndAdd(center, center, viewY, -translateStep);
         }
 
-        else if (key === 'A') { 
+        // --- CAMERA ROTATIONS (A, D, W, S) ---
+        else if (key === 'D') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'D') { 
+        } else if (key === 'A') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'W') { 
+        } else if (key === 'W') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, rotateStep, viewX);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'S') { 
+        } else if (key === 'S') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
         }
 
+        // --- PART 5: MODEL SELECTION ---
         else if (key === 'ArrowRight' || event.keyCode === 39) {
             event.preventDefault();
             if (triangleSets.length > 0) {
+                if (selectedIndex !== -1) {
+                    triangleSets[selectedIndex].isHighlighted = false;
+                }
                 selectedIndex = (selectedIndex + 1) % triangleSets.length;
+                triangleSets[selectedIndex].isHighlighted = true;
             }
         } else if (key === 'ArrowLeft' || event.keyCode === 37) {
             event.preventDefault();
             if (triangleSets.length > 0) {
+                if (selectedIndex !== -1) {
+                    triangleSets[selectedIndex].isHighlighted = false;
+                }
                 selectedIndex = (selectedIndex - 1 + triangleSets.length) % triangleSets.length;
+                triangleSets[selectedIndex].isHighlighted = true;
             }
         } else if (key === ' ' || event.code === 'Space' || event.keyCode === 32) {
             event.preventDefault();
-            selectedIndex = -1;
+            if (selectedIndex !== -1) {
+                triangleSets[selectedIndex].isHighlighted = false;
+                selectedIndex = -1;
+            }
         }
 
-        if (selectedIndex !== -1) {
-            var tSet = triangleSets[selectedIndex];
+        // --- PART 6: INTERACTIVE MODEL TRANSFORMATIONS ---
+        else if (selectedIndex !== -1) {
+            var curSet = triangleSets[selectedIndex];
+            var modelTranslateStep = 0.05;
+            var modelRotateStep = 0.05;
 
+            // Translations along view axes
             if (key === 'k') { 
-                vec3.scaleAndAdd(tSet.translation, tSet.translation, viewX, -translateStep);
-                event.preventDefault();
-            } else if (key === ';' || key === ',') { 
-                vec3.scaleAndAdd(tSet.translation, tSet.translation, viewX, translateStep);
-                event.preventDefault();
-            } else if (key === 'l') { 
-                vec3.scaleAndAdd(tSet.translation, tSet.translation, viewZ, translateStep);
-                event.preventDefault();
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, -modelTranslateStep);
+            } else if (key === ';') { 
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, modelTranslateStep);
             } else if (key === 'o') { 
-                vec3.scaleAndAdd(tSet.translation, tSet.translation, viewZ, -translateStep);
-                event.preventDefault();
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, modelTranslateStep);
+            } else if (key === 'l') { 
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, -modelTranslateStep);
             } else if (key === 'i') { 
-                vec3.scaleAndAdd(tSet.translation, tSet.translation, viewY, translateStep);
-                event.preventDefault();
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, modelTranslateStep);
             } else if (key === 'p') { 
-                vec3.scaleAndAdd(tSet.translation, tSet.translation, viewY, -translateStep);
-                event.preventDefault();
-            } else if (key === 'K') { 
-                let rotMat = mat4.create();
-                mat4.rotate(rotMat, rotMat, rotateStep, viewY);
-                mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
-                event.preventDefault();
-            } else if (key === ':' || (key === 'K' && event.shiftKey)) { 
-                let rotMat = mat4.create();
-                mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
-                mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
-                event.preventDefault();
-            } else if (key === 'O') { 
-                let rotMat = mat4.create();
-                mat4.rotate(rotMat, rotMat, rotateStep, viewX);
-                mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
-                event.preventDefault();
-            } else if (key === 'L') { 
-                let rotMat = mat4.create();
-                mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
-                mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
-                event.preventDefault();
-            } else if (key === 'I') { 
-                let rotMat = mat4.create();
-                mat4.rotate(rotMat, rotMat, rotateStep, viewZ);
-                mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
-                event.preventDefault();
-            } else if (key === 'P') { 
-                let rotMat = mat4.create();
-                mat4.rotate(rotMat, rotMat, -rotateStep, viewZ);
-                mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
-                event.preventDefault();
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, -modelTranslateStep);
+            } 
+            
+            // Rotations around view axes (applied directly into the rotation matrix for smooth local spinning)
+            else if (key === 'K') { // Yaw left around view Y[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, modelRotateStep, viewY);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === ':') { // Yaw right around view Y[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, -modelRotateStep, viewY);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === 'O') { // Pitch forward around view X[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, modelRotateStep, viewX);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === 'L') { // Pitch backward around view X[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, -modelRotateStep, viewX);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === 'I') { // Roll clockwise around view Z[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, modelRotateStep, viewZ);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
+            } else if (key === 'P') { // Roll counterclockwise around view Z[cite: 6]
+                let tempMat = mat4.create();
+                mat4.rotate(tempMat, tempMat, -modelRotateStep, viewZ);
+                mat4.multiply(curSet.rotationMatrix, tempMat, curSet.rotationMatrix);
             }
         }
     });
@@ -471,36 +437,34 @@ function setupEvents() {
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
 
+    // Check state of HTML lighting checkbox
     var lightingEnabled = document.getElementById("lightingCheck").checked;
 
+    // Compute base View Matrix
     var vMatrix = mat4.create();
     mat4.lookAt(vMatrix, eye, center, up);
 
-    // Part 7: Send light data to shader (transforming world light positions into eye space)
-    gl.uniform1i(numLightsUniform, Math.min(lights.length, MAX_LIGHTS));
-    for (var i = 0; i < lights.length && i < MAX_LIGHTS; i++) {
-        var light = lights[i];
-        var lightPosWorld = vec4.fromValues(light.x, light.y, light.z, 1.0);
-        var lightPosEye = vec4.create();
-        vec4.transformMat4(lightPosEye, lightPosWorld, vMatrix);
-
-        gl.uniform3f(lightPositionUniforms[i], lightPosEye[0] / lightPosEye[3], lightPosEye[1] / lightPosEye[3], lightPosEye[2] / lightPosEye[3]);
-        gl.uniform3f(lightAmbientUniforms[i], light.ambient[0], light.ambient[1], light.ambient[2]);
-        gl.uniform3f(lightDiffuseUniforms[i], light.diffuse[0], light.diffuse[1], light.diffuse[2]);
-        gl.uniform3f(lightSpecularUniforms[i], light.specular[0], light.specular[1], light.specular[2]);
-    }
-
+    // Render each triangle set using its updated model matrix
     for (var i = 0; i < triangleSets.length; i++) {
         var tSet = triangleSets[i];
 
-        mat4.identity(tSet.mMatrix);
-        mat4.translate(tSet.mMatrix, tSet.mMatrix, tSet.translation);
-        mat4.multiply(tSet.mMatrix, tSet.mMatrix, tSet.rotation);
-        if (i === selectedIndex) {
-            mat4.scale(tSet.mMatrix, tSet.mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
+        // Construct model matrix (mMatrix): 
+        // Order: Translation -> Accumulated Rotation Matrix -> Highlight Scale[cite: 6]
+        var mMatrix = mat4.create();
+        
+        // 1. Translate to object position
+        mat4.translate(mMatrix, mMatrix, tSet.translation);
+        
+        // 2. Apply accumulated rotation matrix (so it rotates around its own center)[cite: 6]
+        mat4.multiply(mMatrix, mMatrix, tSet.rotationMatrix);
+
+        // 3. Apply 20% highlight scale if selected[cite: 4]
+        if (tSet.isHighlighted) {
+            mat4.scale(mMatrix, mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
         }
 
-        mat4.multiply(mvMatrix, vMatrix, tSet.mMatrix);
+        // Model-View Matrix = View Matrix * Model Matrix
+        mat4.multiply(mvMatrix, vMatrix, mMatrix);
         mat3.normalFromMat4(nMatrix, mvMatrix);
 
         gl.uniformMatrix4fv(pMatrixUniform, false, pMatrix);
@@ -534,10 +498,9 @@ function renderTriangles() {
 } 
 
 function main() {
-    setupWebGL(); 
-    loadTriangles(); 
-    loadLights(); // Part 7: Load lights from JSON
-    setupShaders(); 
-    setupEvents(); 
-    renderTriangles(); 
+  setupWebGL(); 
+  loadTriangles(); 
+  setupShaders(); 
+  setupEvents(); 
+  renderTriangles(); 
 }
