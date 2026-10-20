@@ -42,9 +42,10 @@ var eye = vec3.fromValues(0.5, 0.5, -0.5);
 var center = vec3.fromValues(0.5, 0.5, 1.0);
 var up = vec3.fromValues(0, 1, 0);
 
-// --- PART 10: FOOTBALL FIELD GOAL MODE GLOBALS ---
+// --- PART 10: SKETCH ANIMATION GLOBALS ---
 var isFootballMode = false;
-var kickTime = 0.0;
+var rollDistance = 0.0; // Ball position progress along Z
+var rollAngle = 0.0;    // Ball rotation angle for rolling
 
 /* ASSIGNMENT HELPER FUNCTIONS */
 
@@ -91,7 +92,6 @@ function setupWebGL() {
     } 
 } 
 
-// Load lights array from lights.json
 function loadLights() {
     inputLights = getJSONFile(INPUT_LIGHTS_URL, "lights");
     if (inputLights == null) {
@@ -100,7 +100,6 @@ function loadLights() {
     console.log("Loaded " + inputLights.length + " light sources.");
 }
 
-// Compute vertex normals if missing
 function computeVertexNormals(vertices, triangles) {
     var normals = new Array(vertices.length);
     for (var i = 0; i < vertices.length; i++) {
@@ -133,7 +132,6 @@ function computeVertexNormals(vertices, triangles) {
     return normals;
 }
 
-// Read triangles in and load into WebGL buffers
 function loadTriangles() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL, "triangles");
     if (inputTriangles != null) { 
@@ -227,7 +225,6 @@ function loadTriangles() {
     } 
 } 
 
-// Setup Shaders
 function setupShaders() {
     var fShaderCode = `
         precision mediump float;
@@ -417,7 +414,6 @@ function setupUI() {
     }
 }
 
-// Keyboard Event Handlers for Parts 4, 5, 6, and Part 10 (!)
 function setupEvents() {
     window.addEventListener("keydown", function(event) {
         var key = event.key;
@@ -436,16 +432,17 @@ function setupEvents() {
         vec3.cross(viewY, viewX, viewZ);
         vec3.normalize(viewY, viewY);
 
-        // --- PART 10: TRIGGER FOOTBALL FIELD GOAL MODE (!) ---
-        if (key === '!' || key === '1' && event.shiftKey) {
+        // --- PART 10: TOGGLE SKETCH ANIMATION MODE (!) ---
+        if (key === '!' || (key === '1' && event.shiftKey)) {
             isFootballMode = !isFootballMode;
-            kickTime = 0.0;
-            console.log("Football Mode Toggled: " + isFootballMode);
+            rollDistance = 0.0;
+            rollAngle = 0.0;
+            console.log("Kick Animation Toggled: " + isFootballMode);
             event.preventDefault();
             return;
         }
 
-        // Camera Translations
+        // Camera Controls
         if (key === 'd') {
             vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
             vec3.scaleAndAdd(center, center, viewX, -translateStep);
@@ -587,11 +584,12 @@ function renderTriangles() {
 
     mat4.lookAt(vMatrix, eye, center, up);
 
-    // --- PART 10: UPDATE ANIMATED FOOTBALL KICK TRAJECTORY ---
+    // --- ANIMATION STEP FOR ROLLING BALL ---
     if (isFootballMode) {
-        kickTime += 0.02;
-        if (kickTime > 2.0 * Math.PI) {
-            kickTime = 0.0; // Loop animation
+        var targetZ = 1.8; // Stop point right at goal post
+        if (rollDistance < targetZ) {
+            rollDistance += 0.015;
+            rollAngle += 0.15; // Smooth forward rolling spin
         }
     }
 
@@ -601,53 +599,35 @@ function renderTriangles() {
 
     for (var l = 0; l < numLightsToPass; l++) {
         var light = inputLights[l];
-        
-        // Dynamic tracking spotlight following the football trajectory in Part 10
-        if (isFootballMode && l === 0) {
-            var ballZ = 0.5 + (kickTime / (2.0 * Math.PI)) * 2.0;
-            var ballY = 0.2 + Math.sin(kickTime) * 0.8;
-            gl.uniform3f(lightUniforms[l].position, 0.5, ballY + 0.5, ballZ);
-        } else {
-            gl.uniform3f(lightUniforms[l].position, light.x, light.y, light.z);
-        }
-
+        gl.uniform3f(lightUniforms[l].position, light.x, light.y, light.z);
         gl.uniform3fv(lightUniforms[l].ambient, light.ambient);
         gl.uniform3fv(lightUniforms[l].diffuse, light.diffuse);
         gl.uniform3fv(lightUniforms[l].specular, light.specular);
     }
 
-    // Render each triangle set
     for (var i = 0; i < triangleSets.length; i++) {
         var tSet = triangleSets[i];
 
         var mMatrix = mat4.create();
 
         if (isFootballMode) {
-            // --- PART 10 SPECIALIZED MODEL TRANSFORMATIONS ---
+            // --- SCENE LAYOUT BASED ON SKETCH ---
             if (i === 0) {
-                // Set 0: The Turf / Football Field Floor
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.0, 1.5));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(3.0, 0.05, 3.0));
+                // Set 0: The Stick Figure / Kicker on Left
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.15, 0.4, 0.2));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.15, 0.7, 0.1));
             } else if (i === 1) {
-                // Set 1: Left Goalpost Pole
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.1, 0.5, 2.2));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.1, 1.2, 0.1));
-            } else if (i === 2) {
-                // Set 2: Right Goalpost Pole
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.9, 0.5, 2.2));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.1, 1.2, 0.1));
+                // Set 1: Goal Post on Right Frame
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.5, 2.0));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.8, 0.8, 0.1));
             } else {
-                // Set 3+: The Football (Kicked in 3D Parabola through the posts)
-                var ballX = 0.5;
-                var ballY = 0.1 + Math.sin(kickTime) * 0.9;
-                var ballZ = 0.3 + (kickTime / (2.0 * Math.PI)) * 2.2;
-
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(ballX, ballY, ballZ));
+                // Set 2+: Ball Rolls from Kicker to Goal Post and Stops
+                var ballZ = 0.2 + rollDistance;
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.25, ballZ));
                 
-                // End-over-end endzone football spin
-                mat4.rotateX(mMatrix, mMatrix, kickTime * 4.0);
-                mat4.rotateZ(mMatrix, mMatrix, kickTime * 2.0);
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.5, 0.8, 0.5));
+                // Rotation around X axis makes ball roll realistically forward
+                mat4.rotateX(mMatrix, mMatrix, rollAngle);
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.3, 0.3, 0.3));
             }
         } else {
             // Standard Parts 1-9 Transformations
