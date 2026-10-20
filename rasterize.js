@@ -23,7 +23,7 @@ var mvMatrix = mat4.create();
 var pMatrix = mat4.create();
 var nMatrix = mat3.create();
 
-// Triangle Sets array and selection state for Part 5
+// Triangle Sets array and selection state for Parts 5 & 6
 var triangleSets = [];
 var selectedIndex = -1;
 
@@ -76,7 +76,7 @@ function setupWebGL() {
     } 
 } 
 
-// read triangles in, load them into webgl buffers (Updated for Part 5 to support multiple models/sets)
+// read triangles in, load them into webgl buffers
 function loadTriangles() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL, "triangles");
     if (inputTriangles != null) { 
@@ -135,7 +135,7 @@ function loadTriangles() {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tBuffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexArray), gl.STATIC_DRAW);
 
-            // Store each triangle set with its own buffers and model matrix for Part 5
+            // Store each triangle set with buffers, model matrix, and transform states for Parts 5 & 6
             triangleSets.push({
                 vertexBuffer: vBuffer,
                 normalBuffer: nBuffer,
@@ -145,7 +145,9 @@ function loadTriangles() {
                 shininessBuffer: shineBuffer,
                 triangleBuffer: tBuffer,
                 triBufferSize: indexArray.length,
-                mMatrix: mat4.create() // Identity matrix initially
+                translation: vec3.create(), // [x, y, z] offset
+                rotation: vec3.create(),    // [pitch, yaw, roll] angles
+                isHighlighted: false
             });
         } 
         
@@ -290,7 +292,7 @@ function setupShaders() {
     mat4.perspective(pMatrix, fov, aspect, 0.1, 100.0);
 } 
 
-// Part 4 & 5: Interactive View Controller & Model Selection Setup
+// Parts 4, 5, & 6: View Controllers, Model Selection, and Interactive Model Transformations Setup
 function setupEvents() {
     window.addEventListener("keydown", function(event) {
         var key = event.key;
@@ -310,75 +312,114 @@ function setupEvents() {
         vec3.cross(viewY, viewX, viewZ);
         vec3.normalize(viewY, viewY);
 
-        // Translations (a, d, w, s, q, e)
-        if (key === 'a') { // Translate view left along view X
+        // --- CAMERA TRANSLATIONS (a, d, w, s, q, e) ---
+        if (key === 'a') {
             vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
             vec3.scaleAndAdd(center, center, viewX, -translateStep);
-        } else if (key === 'd') { // Translate view right along view X
+        } else if (key === 'd') {
             vec3.scaleAndAdd(eye, eye, viewX, translateStep);
             vec3.scaleAndAdd(center, center, viewX, translateStep);
-        } else if (key === 'w') { // Translate view forward along view Z
+        } else if (key === 'w') {
             vec3.scaleAndAdd(eye, eye, viewZ, translateStep);
             vec3.scaleAndAdd(center, center, viewZ, translateStep);
-        } else if (key === 's') { // Translate view backward along view Z
+        } else if (key === 's') {
             vec3.scaleAndAdd(eye, eye, viewZ, -translateStep);
             vec3.scaleAndAdd(center, center, viewZ, -translateStep);
-        } else if (key === 'q') { // Translate view up along view Y
+        } else if (key === 'q') {
             vec3.scaleAndAdd(eye, eye, viewY, translateStep);
             vec3.scaleAndAdd(center, center, viewY, translateStep);
-        } else if (key === 'e') { // Translate view down along view Y
+        } else if (key === 'e') {
             vec3.scaleAndAdd(eye, eye, viewY, -translateStep);
             vec3.scaleAndAdd(center, center, viewY, -translateStep);
         }
 
-        // Rotations (A, D, W, S)
-        else if (key === 'D') { // Rotate view right (yaw) around view Y
+        // --- CAMERA ROTATIONS (A, D, W, S) ---
+        else if (key === 'D') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'A') { // Rotate view left (yaw) around view Y
+        } else if (key === 'A') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'W') { // Rotate view forward (pitch) around view X
+        } else if (key === 'W') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, rotateStep, viewX);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'S') { // Rotate view backward (pitch) around view X
+        } else if (key === 'S') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
         }
 
-        // Part 5: Model Selection and Highlighting
+        // --- PART 5: MODEL SELECTION ---
         else if (key === 'ArrowRight' || event.keyCode === 39) {
             event.preventDefault();
             if (triangleSets.length > 0) {
                 if (selectedIndex !== -1) {
-                    mat4.identity(triangleSets[selectedIndex].mMatrix); // Turn off highlight on previous
+                    triangleSets[selectedIndex].isHighlighted = false;
                 }
                 selectedIndex = (selectedIndex + 1) % triangleSets.length;
-                // Highlight new selection with 20% uniform scale (multiply x, y, z by 1.2)
-                mat4.fromScaling(triangleSets[selectedIndex].mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
+                triangleSets[selectedIndex].isHighlighted = true;
             }
         } else if (key === 'ArrowLeft' || event.keyCode === 37) {
             event.preventDefault();
             if (triangleSets.length > 0) {
                 if (selectedIndex !== -1) {
-                    mat4.identity(triangleSets[selectedIndex].mMatrix); // Turn off highlight on previous
+                    triangleSets[selectedIndex].isHighlighted = false;
                 }
                 selectedIndex = (selectedIndex - 1 + triangleSets.length) % triangleSets.length;
-                mat4.fromScaling(triangleSets[selectedIndex].mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
+                triangleSets[selectedIndex].isHighlighted = true;
             }
         } else if (key === ' ' || event.code === 'Space' || event.keyCode === 32) {
             event.preventDefault();
             if (selectedIndex !== -1) {
-                mat4.identity(triangleSets[selectedIndex].mMatrix); // Turn off highlight
+                triangleSets[selectedIndex].isHighlighted = false;
                 selectedIndex = -1;
+            }
+        }
+
+        // --- PART 6: INTERACTIVE MODEL TRANSFORMATIONS ---
+        else if (selectedIndex !== -1) {
+            var curSet = triangleSets[selectedIndex];
+            var modelTranslateStep = 0.05;
+            var modelRotateStep = 0.05;
+
+            // Translations along view axes
+            if (key === 'k') { // Translate selection left along view X[cite: 6]
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, -modelTranslateStep);
+            } else if (key === ';') { // Translate selection right along view X[cite: 6]
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, modelTranslateStep);
+            } else if (key === 'o') { // Translate selection forward along view Z[cite: 6]
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, modelTranslateStep);
+            } else if (key === 'l' || key === 'L') { // Note: 'L' is pitch down, lowercase 'l' is backward translation
+                // Check exact mapping from table: o and l — forward/backward along Z[cite: 6]
+                if (key === 'l') {
+                    vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, -modelTranslateStep);
+                } else if (key === 'L') { // rotate selection backward (pitch) around view X[cite: 6]
+                    curSet.rotation[0] -= modelRotateStep;
+                }
+            } else if (key === 'i') { // Translate selection up along view Y[cite: 6]
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, modelTranslateStep);
+            } else if (key === 'p') { // Translate selection down along view Y[cite: 6]
+                vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, -modelTranslateStep);
+            } 
+            
+            // Rotations
+            else if (key === 'K') { // Rotate selection left (yaw) around view Y[cite: 6]
+                curSet.rotation[1] += modelRotateStep;
+            } else if (key === ':') { // Rotate selection right (yaw) around view Y[cite: 6]
+                curSet.rotation[1] -= modelRotateStep;
+            } else if (key === 'O') { // Rotate selection forward (pitch) around view X[cite: 6]
+                curSet.rotation[0] += modelRotateStep;
+            } else if (key === 'I') { // Rotate selection clockwise (roll) around view Z[cite: 6]
+                curSet.rotation[2] += modelRotateStep;
+            } else if (key === 'P') { // Rotate selection counterclockwise (roll) around view Z[cite: 6]
+                curSet.rotation[2] -= modelRotateStep;
             }
         }
     });
@@ -394,12 +435,29 @@ function renderTriangles() {
     var vMatrix = mat4.create();
     mat4.lookAt(vMatrix, eye, center, up);
 
-    // Render each triangle set using its model matrix
+    // Render each triangle set using its updated model matrix
     for (var i = 0; i < triangleSets.length; i++) {
         var tSet = triangleSets[i];
 
+        // Construct model matrix (mMatrix) for Parts 5 and 6:
+        // Order: Translation -> Rotation -> Highlighting Scale (so model rotates around itself and scale doesn't offset position)[cite: 6]
+        var mMatrix = mat4.create();
+        
+        // 1. Apply translation along view axes
+        mat4.translate(mMatrix, mMatrix, tSet.translation);
+        
+        // 2. Apply rotations around view axes (Pitch, Yaw, Roll)
+        mat4.rotateX(mMatrix, mMatrix, tSet.rotation[0]);
+        mat4.rotateY(mMatrix, mMatrix, tSet.rotation[1]);
+        mat4.rotateZ(mMatrix, mMatrix, tSet.rotation[2]);
+
+        // 3. Apply 20% highlight scaling if selected (multiply x, y, z by 1.2)[cite: 4]
+        if (tSet.isHighlighted) {
+            mat4.scale(mMatrix, mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
+        }
+
         // Model-View Matrix = View Matrix * Model Matrix
-        mat4.multiply(mvMatrix, vMatrix, tSet.mMatrix);
+        mat4.multiply(mvMatrix, vMatrix, mMatrix);
         mat3.normalFromMat4(nMatrix, mvMatrix);
 
         gl.uniformMatrix4fv(pMatrixUniform, false, pMatrix);
@@ -436,6 +494,6 @@ function main() {
   setupWebGL(); 
   loadTriangles(); 
   setupShaders(); 
-  setupEvents(); // Initialize keyboard event listeners for Parts 4 and 5
+  setupEvents(); // Initialize keyboard event listeners for Parts 4, 5, and 6
   renderTriangles(); 
 }
