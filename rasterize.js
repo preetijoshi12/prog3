@@ -382,10 +382,10 @@ function setupEvents() {
             } else if (key === ';' || key === ',') { // Translate selection right along view X
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewX, translateStep);
                 event.preventDefault();
-            } else if (key === 'o') { // Translate selection forward along view Z
+            } else if (key === 'l') { // Translate selection forward along view Z
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewZ, translateStep);
                 event.preventDefault();
-            } else if (key === 'l') { // Translate selection backward along view Z
+            } else if (key === 'o') { // Translate selection backward along view Z
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewZ, -translateStep);
                 event.preventDefault();
             } else if (key === 'i') { // Translate selection up along view Y
