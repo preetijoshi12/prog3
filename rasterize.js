@@ -1,11 +1,8 @@
 /* GLOBAL CONSTANTS AND VARIABLES */
 
-const WIN_Z = 0;  
-const WIN_LEFT = 0; const WIN_RIGHT = 1;  
-const WIN_BOTTOM = 0; const WIN_TOP = 1;  
-
 const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog3/triangles2.json"; 
 const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.json";
+const INPUT_LIGHTS_URL = "https://ncsucgclass.github.io/prog3/lights.json";
 
 /* webgl globals */
 var gl = null; 
@@ -18,10 +15,23 @@ var vertexSpecularAttrib;
 var vertexShininessAttrib;
 
 // Matrix Uniforms and Objects
-var mvMatrixUniform, pMatrixUniform, nMatrixUniform, lightingEnabledUniform;
+var mvMatrixUniform, pMatrixUniform, nMatrixUniform, vMatrixUniform, lightingEnabledUniform;
+var numLightsUniform;
+
 var mvMatrix = mat4.create();
 var pMatrix = mat4.create();
 var nMatrix = mat3.create();
+var vMatrix = mat4.create();
+
+// Array of Light Uniform Locations
+var lightUniforms = [];
+var MAX_LIGHTS = 10;
+var inputLights = [];
+
+// Window Frustum Projection Parameters (in view space at near plane)
+var winLeft = -0.1, winRight = 0.1;
+var winBottom = -0.1, winTop = 0.1;
+var nearDist = 0.1, farDist = 100.0;
 
 // Triangle Sets array and selection state for Parts 5 & 6
 var triangleSets = [];
@@ -75,6 +85,15 @@ function setupWebGL() {
       console.log(e);
     } 
 } 
+
+// Load lights array from lights.json
+function loadLights() {
+    inputLights = getJSONFile(INPUT_LIGHTS_URL, "lights");
+    if (inputLights == null) {
+        inputLights = [];
+    }
+    console.log("Loaded " + inputLights.length + " light sources.");
+}
 
 // read triangles in, load them into webgl buffers
 function loadTriangles() {
@@ -138,13 +157,12 @@ function loadTriangles() {
 
             var shineBuffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, shineBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shininessArray), gl.STATIC_DRAW);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shininessBuffer), gl.STATIC_DRAW);
 
             var tBuffer = gl.createBuffer();
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tBuffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexArray), gl.STATIC_DRAW);
 
-            // Store each triangle set with buffers, transformation matrix, centroid, and highlight status
             triangleSets.push({
                 vertexBuffer: vBuffer,
                 normalBuffer: nBuffer,
@@ -165,7 +183,7 @@ function loadTriangles() {
     } 
 } 
 
-// setup the webGL shaders with toggleable Blinn-Phong lighting
+// setup the webGL shaders with multi-light Blinn-Phong model
 function setupShaders() {
     var fShaderCode = `
         precision mediump float;
@@ -177,6 +195,18 @@ function setupShaders() {
         varying vec3 vSpecular;
         varying float vShininess;
 
+        struct Light {
+            vec3 position; // world position
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+        };
+
+        const int MAX_LIGHTS = 10;
+        uniform Light uLights[MAX_LIGHTS];
+        uniform int uNumLights;
+        uniform mat4 uVMatrix; // View Matrix to convert light world pos to eye space
+
         uniform bool uLightingEnabled;
 
         void main(void) {
@@ -184,29 +214,34 @@ function setupShaders() {
                 // Part 2: Unlit flat diffuse color
                 gl_FragColor = vec4(vDiffuse, 1.0);
             } else {
-                // Part 3: Blinn-Phong lighting model
-                vec3 lightPosition = vec3(-0.5, 1.5, -0.5);
-                vec3 lightColor = vec3(1.1, 1.1, 1.1);
-
                 vec3 N = normalize(vNormal);
-                vec3 L = normalize(lightPosition - vPosition);
-                vec3 V = normalize(-vPosition); 
-                vec3 H = normalize(L + V);
+                vec3 V = normalize(-vPosition); // Eye is at origin in eye space
+                vec3 totalColor = vec3(0.0);
 
-                // Ambient
-                vec3 ambient = vAmbient * lightColor;
+                for (int i = 0; i < MAX_LIGHTS; i++) {
+                    if (i >= uNumLights) break;
 
-                // Diffuse
-                float diff = max(dot(N, L), 0.0);
-                vec3 diffuse = diff * (vDiffuse * lightColor);
+                    // Transform light position to Eye Space
+                    vec3 lightPosEye = (uVMatrix * vec4(uLights[i].position, 1.0)).xyz;
+                    vec3 L = normalize(lightPosEye - vPosition);
+                    vec3 H = normalize(L + V);
 
-                // Specular (Blinn-Phong)
-                float spec = pow(max(dot(N, H), 0.0), vShininess);
-                if (diff <= 0.0) spec = 0.0;
-                vec3 specular = spec * (vSpecular * lightColor);
+                    // Ambient contribution
+                    vec3 ambient = vAmbient * uLights[i].ambient;
 
-                vec3 finalColor = ambient + diffuse + specular;
-                gl_FragColor = vec4(finalColor, 1.0);
+                    // Diffuse contribution
+                    float diff = max(dot(N, L), 0.0);
+                    vec3 diffuse = diff * (vDiffuse * uLights[i].diffuse);
+
+                    // Specular contribution (Blinn-Phong)
+                    float spec = pow(max(dot(N, H), 0.0), vShininess);
+                    if (diff <= 0.0) spec = 0.0;
+                    vec3 specular = spec * (vSpecular * uLights[i].specular);
+
+                    totalColor += (ambient + diffuse + specular);
+                }
+
+                gl_FragColor = vec4(totalColor, 1.0);
             }
         }
     `;
@@ -289,7 +324,19 @@ function setupShaders() {
                 mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
                 pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
                 nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
+                vMatrixUniform = gl.getUniformLocation(shaderProgram, "uVMatrix");
                 lightingEnabledUniform = gl.getUniformLocation(shaderProgram, "uLightingEnabled");
+                numLightsUniform = gl.getUniformLocation(shaderProgram, "uNumLights");
+
+                // Get array locations for lights struct
+                for (var l = 0; l < MAX_LIGHTS; l++) {
+                    lightUniforms.push({
+                        position: gl.getUniformLocation(shaderProgram, "uLights[" + l + "].position"),
+                        ambient: gl.getUniformLocation(shaderProgram, "uLights[" + l + "].ambient"),
+                        diffuse: gl.getUniformLocation(shaderProgram, "uLights[" + l + "].diffuse"),
+                        specular: gl.getUniformLocation(shaderProgram, "uLights[" + l + "].specular")
+                    });
+                }
             }
         }
     } 
@@ -297,10 +344,42 @@ function setupShaders() {
         console.log(e);
     }
 
-    var fov = Math.PI / 2; 
-    var aspect = gl.canvas.width / gl.canvas.height;
-    mat4.perspective(pMatrix, fov, aspect, 0.1, 100.0);
+    updateProjectionMatrix();
 } 
+
+function updateProjectionMatrix() {
+    // Mat4 Frustum uses view space coordinates (left, right, bottom, top, near, far)
+    mat4.frustum(pMatrix, winLeft, winRight, winBottom, winTop, nearDist, farDist);
+}
+
+function setupUI() {
+    // Button event listener to update viewport size
+    var updateViewportBtn = document.getElementById("updateViewportBtn");
+    if (updateViewportBtn) {
+        updateViewportBtn.addEventListener("click", function() {
+            var w = parseInt(document.getElementById("canvasWidth").value);
+            var h = parseInt(document.getElementById("canvasHeight").value);
+            if (w > 0 && h > 0) {
+                var canvas = document.getElementById("myWebGLCanvas");
+                canvas.width = w;
+                canvas.height = h;
+                gl.viewport(0, 0, w, h);
+            }
+        });
+    }
+
+    // Button event listener to update frustum projection parameters
+    var updateProjBtn = document.getElementById("updateProjectionBtn");
+    if (updateProjBtn) {
+        updateProjBtn.addEventListener("click", function() {
+            winLeft = parseFloat(document.getElementById("winLeft").value);
+            winRight = parseFloat(document.getElementById("winRight").value);
+            winBottom = parseFloat(document.getElementById("winBottom").value);
+            winTop = parseFloat(document.getElementById("winTop").value);
+            updateProjectionMatrix();
+        });
+    }
+}
 
 // Keyboard Event Handlers for Parts 4, 5, and 6
 function setupEvents() {
@@ -309,7 +388,7 @@ function setupEvents() {
         var translateStep = 0.05;
         var rotateStep = 0.03;
 
-        // Compute viewing coordinate axes in World Space
+        // Compute viewing coordinate axes
         var viewZ = vec3.create(); // Forward
         vec3.subtract(viewZ, center, eye);
         vec3.normalize(viewZ, viewZ);
@@ -399,60 +478,57 @@ function setupEvents() {
             var modelTranslateStep = 0.05;
             var modelRotateStep = 0.05;
 
-            // Model Translations along View Axes
-            if (key === 'k') { // Translate selection left (k) along view X
+            if (key === 'k') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, -modelTranslateStep);
                 event.preventDefault();
-            } else if (key === ';') { // Translate selection right (;) along view X
+            } else if (key === ';') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, modelTranslateStep);
                 event.preventDefault();
-            } else if (key === 'o') { // Translate selection forward (o) along view Z
+            } else if (key === 'o') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, modelTranslateStep);
                 event.preventDefault();
-            } else if (key === 'l') { // Translate selection backward (l) along view Z
+            } else if (key === 'l') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, -modelTranslateStep);
                 event.preventDefault();
-            } else if (key === 'i') { // Translate selection up (i) along view Y
+            } else if (key === 'i') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, modelTranslateStep);
                 event.preventDefault();
-            } else if (key === 'p') { // Translate selection down (p) along view Y
+            } else if (key === 'p') { 
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, -modelTranslateStep);
                 event.preventDefault();
             } 
             
-            // Model Rotations around View Axes (Yaw, Pitch, Roll)
             else {
                 let tempRot = mat4.create();
                 let hasRotated = false;
 
-                if (key === 'K') { // Rotate selection left (K) around view Y (yaw)
+                if (key === 'K') { 
                     mat4.rotate(tempRot, tempRot, modelRotateStep, viewY);
                     hasRotated = true;
                     event.preventDefault();
-                } else if (key === ':') { // Rotate selection right (:) around view Y (yaw)
+                } else if (key === ':') { 
                     mat4.rotate(tempRot, tempRot, -modelRotateStep, viewY);
                     hasRotated = true;
                     event.preventDefault();
-                } else if (key === 'O') { // Rotate selection forward (O) around view X (pitch)
+                } else if (key === 'O') { 
                     mat4.rotate(tempRot, tempRot, modelRotateStep, viewX);
                     hasRotated = true;
                     event.preventDefault();
-                } else if (key === 'L') { // Rotate selection backward (L) around view X (pitch)
+                } else if (key === 'L') { 
                     mat4.rotate(tempRot, tempRot, -modelRotateStep, viewX);
                     hasRotated = true;
                     event.preventDefault();
-                } else if (key === 'I') { // Rotate selection clockwise (I) around view Z (roll)
+                } else if (key === 'I') { 
                     mat4.rotate(tempRot, tempRot, modelRotateStep, viewZ);
                     hasRotated = true;
                     event.preventDefault();
-                } else if (key === 'P') { // Rotate selection counterclockwise (P) around view Z (roll)
+                } else if (key === 'P') { 
                     mat4.rotate(tempRot, tempRot, -modelRotateStep, viewZ);
                     hasRotated = true;
                     event.preventDefault();
                 }
 
                 if (hasRotated) {
-                    // Accumulate rotation: Rotation_new = Rotation_delta * Rotation_old
                     mat4.multiply(curSet.rotationMatrix, tempRot, curSet.rotationMatrix);
                 }
             }
@@ -463,12 +539,23 @@ function setupEvents() {
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
 
-    // Check state of HTML lighting checkbox
     var lightingEnabled = document.getElementById("lightingCheck").checked;
 
     // Compute base View Matrix
-    var vMatrix = mat4.create();
     mat4.lookAt(vMatrix, eye, center, up);
+
+    // Pass Lights Data to Shaders
+    var numLightsToPass = Math.min(inputLights.length, MAX_LIGHTS);
+    gl.uniform1i(numLightsUniform, numLightsToPass);
+    gl.uniformMatrix4fv(vMatrixUniform, false, vMatrix);
+
+    for (var l = 0; l < numLightsToPass; l++) {
+        var light = inputLights[l];
+        gl.uniform3f(lightUniforms[l].position, light.x, light.y, light.z);
+        gl.uniform3fv(lightUniforms[l].ambient, light.ambient);
+        gl.uniform3fv(lightUniforms[l].diffuse, light.diffuse);
+        gl.uniform3fv(lightUniforms[l].specular, light.specular);
+    }
 
     // Render each triangle set using its updated model matrix
     for (var i = 0; i < triangleSets.length; i++) {
@@ -531,8 +618,10 @@ function renderTriangles() {
 
 function main() {
   setupWebGL(); 
+  loadLights();
   loadTriangles(); 
   setupShaders(); 
+  setupUI();
   setupEvents(); 
   renderTriangles(); 
 }
