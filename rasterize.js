@@ -1,8 +1,8 @@
 /* GLOBAL CONSTANTS AND VARIABLES */
 
 var WIN_Z = 0;  
-var WIN_LEFT = -0.5; var WIN_RIGHT = 0.5;  // Centered window parameters
-var WIN_BOTTOM = -0.5; var WIN_TOP = 1;  
+var WIN_LEFT = 0; var WIN_RIGHT = 1;  
+var WIN_BOTTOM = 0; var WIN_TOP = 1;  
 
 const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog3/triangles2.json"; 
 const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.json";
