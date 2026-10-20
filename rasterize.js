@@ -313,10 +313,10 @@ function setupEvents() {
         vec3.normalize(viewY, viewY);
 
         // --- CAMERA TRANSLATIONS (a, d, w, s, q, e) ---
-        if (key === 'a') {
+        if (key === 'd') {
             vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
             vec3.scaleAndAdd(center, center, viewX, -translateStep);
-        } else if (key === 'd') {
+        } else if (key === 'a') {
             vec3.scaleAndAdd(eye, eye, viewX, translateStep);
             vec3.scaleAndAdd(center, center, viewX, translateStep);
         } else if (key === 'w') {
@@ -325,31 +325,31 @@ function setupEvents() {
         } else if (key === 's') {
             vec3.scaleAndAdd(eye, eye, viewZ, -translateStep);
             vec3.scaleAndAdd(center, center, viewZ, -translateStep);
-        } else if (key === 'q') {
+        } else if (key === 'e') {
             vec3.scaleAndAdd(eye, eye, viewY, translateStep);
             vec3.scaleAndAdd(center, center, viewY, translateStep);
-        } else if (key === 'e') {
+        } else if (key === 'q') {
             vec3.scaleAndAdd(eye, eye, viewY, -translateStep);
             vec3.scaleAndAdd(center, center, viewY, -translateStep);
         }
 
         // --- CAMERA ROTATIONS (A, D, W, S) ---
-        else if (key === 'D') {
+        else if (key === 'A') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'A') {
+        } else if (key === 'D') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'W') {
+        } else if (key === 'S') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, rotateStep, viewX);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
-        } else if (key === 'S') {
+        } else if (key === 'W') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
             vec3.transformMat4(viewZ, viewZ, rotMat);
