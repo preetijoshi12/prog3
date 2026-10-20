@@ -9,10 +9,36 @@
 </head>
 
 <body onload="main();" style="background-color: #111; color: white; font-family: sans-serif; padding: 20px;">
+    <!-- Lighting Toggle -->
     <div style="margin-bottom: 15px;">
-        <input type="checkbox" id="lightingCheck" checked style="transform: scale(1.2); margin-right: 8px;"> 
+        <input type="checkbox" id="lightingCheck" checked style="transform: scale(1.2); margin-right: 8px;">
         <label for="lightingCheck" style="font-size: 16px; cursor: pointer;">Blinn-Phong lighting (part 3)</label>
     </div>
+
+    <!-- Part 7 UI Controls -->
+    <div style="margin-bottom: 15px; background: #222; padding: 12px; border-radius: 6px; display: inline-block;">
+        <!-- Canvas/Viewport Inputs -->
+        <div style="margin-bottom: 10px;">
+            <strong>Viewport Size:</strong>
+            <label style="margin-left: 10px;">Width: <input type="number" id="canvasWidth" value="512" style="width: 60px;"></label>
+            <label style="margin-left: 10px;">Height: <input type="number" id="canvasHeight" value="512" style="width: 60px;"></label>
+            <button id="updateViewportBtn" style="margin-left: 10px; cursor: pointer;">Update Viewport</button>
+        </div>
+
+        <!-- View-Space Window Projection Inputs -->
+        <div>
+            <strong>Frustum Window Bounds:</strong>
+            <label style="margin-left: 10px;">Left: <input type="number" id="winLeft" value="-0.1" step="0.05" style="width: 60px;"></label>
+            <label style="margin-left: 10px;">Right: <input type="number" id="winRight" value="0.1" step="0.05" style="width: 60px;"></label>
+            <label style="margin-left: 10px;">Bottom: <input type="number" id="winBottom" value="-0.1" step="0.05" style="width: 60px;"></label>
+            <label style="margin-left: 10px;">Top: <input type="number" id="winTop" value="0.1" step="0.05" style="width: 60px;"></label>
+            <button id="updateProjectionBtn" style="margin-left: 10px; cursor: pointer;">Update Projection</button>
+        </div>
+    </div>
+
+    <br>
+
+    <!-- WebGL Canvas -->
     <canvas id="myWebGLCanvas" width="512" height="512"></canvas>
 </body>
 </html>
