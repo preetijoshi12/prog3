@@ -35,6 +35,7 @@ var nearDist = 0.1, farDist = 100.0;
 
 // Triangle Sets array and selection state for Parts 5 & 6
 var triangleSets = [];
+var customSceneSets = []; // Dedicated Part 10 Procedural Geometry Sets
 var selectedIndex = -1;
 
 // Camera Parameters for Part 4
@@ -42,10 +43,10 @@ var eye = vec3.fromValues(0.5, 0.5, -0.5);
 var center = vec3.fromValues(0.5, 0.5, 1.0);
 var up = vec3.fromValues(0, 1, 0);
 
-// --- PART 10: SKETCH ANIMATION GLOBALS ---
+// --- PART 10: CUSTOM GEOMETRY & SKETCH ANIMATION GLOBALS ---
 var isFootballMode = false;
-var rollDistance = 0.0; // Ball position progress along Z
-var rollAngle = 0.0;    // Ball rotation angle for rolling
+var rollDistance = 0.0; // Ball roll progress
+var rollAngle = 0.0;    // Ball rotation spin
 
 /* ASSIGNMENT HELPER FUNCTIONS */
 
@@ -132,6 +133,148 @@ function computeVertexNormals(vertices, triangles) {
     return normals;
 }
 
+// Build standard WebGL buffers for mesh objects
+function createMeshObject(coords, normals, amb, diff, spec, shine, indices) {
+    var vBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(coords), gl.STATIC_DRAW);
+
+    var nBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+
+    var aBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, aBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(amb), gl.STATIC_DRAW);
+
+    var cBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(diff), gl.STATIC_DRAW);
+
+    var sBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, sBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(spec), gl.STATIC_DRAW);
+
+    var shineBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, shineBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shine), gl.STATIC_DRAW);
+
+    var tBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+    return {
+        vertexBuffer: vBuffer,
+        normalBuffer: nBuffer,
+        ambientBuffer: aBuffer,
+        colorBuffer: cBuffer,
+        specularBuffer: sBuffer,
+        shininessBuffer: shineBuffer,
+        triangleBuffer: tBuffer,
+        triBufferSize: indices.length,
+        center: vec3.fromValues(0, 0, 0),
+        translation: vec3.create(),
+        rotationMatrix: mat4.create(),
+        isHighlighted: false
+    };
+}
+
+// Generate 3D Box / Post Geometry
+function createBoxMesh(colorRGB) {
+    var coords = [
+        -0.5,-0.5, 0.5,  0.5,-0.5, 0.5,  0.5, 0.5, 0.5, -0.5, 0.5, 0.5,
+        -0.5,-0.5,-0.5, -0.5, 0.5,-0.5,  0.5, 0.5,-0.5,  0.5,-0.5,-0.5,
+        -0.5, 0.5,-0.5, -0.5, 0.5, 0.5,  0.5, 0.5, 0.5,  0.5, 0.5,-0.5,
+        -0.5,-0.5,-0.5,  0.5,-0.5,-0.5,  0.5,-0.5, 0.5, -0.5,-0.5, 0.5,
+         0.5,-0.5,-0.5,  0.5, 0.5,-0.5,  0.5, 0.5, 0.5,  0.5,-0.5, 0.5,
+        -0.5,-0.5,-0.5, -0.5,-0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5,-0.5
+    ];
+    var normals = [
+         0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+         0.0, 0.0,-1.0,  0.0, 0.0,-1.0,  0.0, 0.0,-1.0,  0.0, 0.0,-1.0,
+         0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,
+         0.0,-1.0, 0.0,  0.0,-1.0, 0.0,  0.0,-1.0, 0.0,  0.0,-1.0, 0.0,
+         1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0
+    ];
+    var amb = [], diff = [], spec = [], shine = [];
+    for (var i = 0; i < 24; i++) {
+        amb.push(colorRGB[0]*0.2, colorRGB[1]*0.2, colorRGB[2]*0.2);
+        diff.push(colorRGB[0], colorRGB[1], colorRGB[2]);
+        spec.push(1.0, 1.0, 1.0);
+        shine.push(15.0);
+    }
+    var indices = [
+        0, 1, 2, 0, 2, 3,    4, 5, 6, 4, 6, 7,
+        8, 9, 10, 8, 10, 11,  12, 13, 14, 12, 14, 15,
+        16, 17, 18, 16, 18, 19, 20, 21, 22, 20, 22, 23
+    ];
+    return createMeshObject(coords, normals, amb, diff, spec, shine, indices);
+}
+
+// Generate 3D Sphere Geometry for Ball & Head
+function createSphereMesh(colorRGB, radius, latBands, longBands) {
+    var coords = [], normals = [], amb = [], diff = [], spec = [], shine = [], indices = [];
+
+    for (var lat = 0; lat <= latBands; lat++) {
+        var theta = lat * Math.PI / latBands;
+        var sinTheta = Math.sin(theta);
+        var cosTheta = Math.cos(theta);
+
+        for (var long = 0; long <= longBands; long++) {
+            var phi = long * 2 * Math.PI / longBands;
+            var x = Math.cos(phi) * sinTheta;
+            var y = cosTheta;
+            var z = Math.sin(phi) * sinTheta;
+
+            coords.push(radius * x, radius * y, radius * z);
+            normals.push(x, y, z);
+            amb.push(colorRGB[0]*0.2, colorRGB[1]*0.2, colorRGB[2]*0.2);
+            diff.push(colorRGB[0], colorRGB[1], colorRGB[2]);
+            spec.push(1.0, 1.0, 1.0);
+            shine.push(20.0);
+        }
+    }
+
+    for (var lat = 0; lat < latBands; lat++) {
+        for (var long = 0; long < longBands; long++) {
+            var first = (lat * (longBands + 1)) + long;
+            var second = first + longBands + 1;
+            indices.push(first, second, first + 1);
+            indices.push(second, second + 1, first + 1);
+        }
+    }
+
+    return createMeshObject(coords, normals, amb, diff, spec, shine, indices);
+}
+
+// Build Part 10 Custom Scene Objects
+function buildPart10CustomScene() {
+    customSceneSets = [];
+    // 0: Ball (Sphere)
+    customSceneSets.push(createSphereMesh([0.9, 0.9, 0.9], 0.08, 16, 16));
+    // 1: Kicker Head
+    customSceneSets.push(createSphereMesh([0.9, 0.7, 0.5], 0.06, 12, 12));
+    // 2: Torso
+    customSceneSets.push(createBoxMesh([0.8, 0.1, 0.1]));
+    // 3: Left Arm
+    customSceneSets.push(createBoxMesh([0.8, 0.1, 0.1]));
+    // 4: Right Arm
+    customSceneSets.push(createBoxMesh([0.8, 0.1, 0.1]));
+    // 5: Left Leg
+    customSceneSets.push(createBoxMesh([0.1, 0.1, 0.8]));
+    // 6: Right Leg
+    customSceneSets.push(createBoxMesh([0.1, 0.1, 0.8]));
+    // 7: Goalpost Left
+    customSceneSets.push(createBoxMesh([0.9, 0.9, 0.9]));
+    // 8: Goalpost Right
+    customSceneSets.push(createBoxMesh([0.9, 0.9, 0.9]));
+    // 9: Goalpost Top Bar
+    customSceneSets.push(createBoxMesh([0.9, 0.9, 0.9]));
+    // 10: Pitch Turf Ground
+    customSceneSets.push(createBoxMesh([0.1, 0.6, 0.1]));
+}
+
 function loadTriangles() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL, "triangles");
     if (inputTriangles != null) { 
@@ -177,52 +320,13 @@ function loadTriangles() {
                 indexArray.push(tri[0], tri[1], tri[2]);
             } 
 
-            var vBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(coordArray), gl.STATIC_DRAW);
-            
-            var nBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normalArray), gl.STATIC_DRAW);
-
-            var aBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, aBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(ambientArray), gl.STATIC_DRAW);
-
-            var cBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(diffuseArray), gl.STATIC_DRAW);
-
-            var sBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, sBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(specularArray), gl.STATIC_DRAW);
-
-            var shineBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, shineBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shininessArray), gl.STATIC_DRAW);
-
-            var tBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexArray), gl.STATIC_DRAW);
-
-            triangleSets.push({
-                vertexBuffer: vBuffer,
-                normalBuffer: nBuffer,
-                ambientBuffer: aBuffer,
-                colorBuffer: cBuffer,
-                specularBuffer: sBuffer,
-                shininessBuffer: shineBuffer,
-                triangleBuffer: tBuffer,
-                triBufferSize: indexArray.length,
-                center: centerPt,
-                translation: vec3.create(), 
-                rotationMatrix: mat4.create(),    
-                isHighlighted: false
-            });
+            triangleSets.push(createMeshObject(coordArray, normalArray, ambientArray, diffuseArray, specularArray, shininessArray, indexArray));
         } 
-        
-        console.log("Loaded " + triangleSets.length + " triangle sets.");
+        console.log("Loaded " + triangleSets.length + " default triangle sets.");
     } 
+
+    // Build custom geometry sets for Part 10
+    buildPart10CustomScene();
 } 
 
 function setupShaders() {
@@ -432,12 +536,12 @@ function setupEvents() {
         vec3.cross(viewY, viewX, viewZ);
         vec3.normalize(viewY, viewY);
 
-        // --- PART 10: TOGGLE SKETCH ANIMATION MODE (!) ---
+        // --- PART 10: TOGGLE CUSTOM SKETCH ANIMATION SCENE (!) ---
         if (key === '!' || (key === '1' && event.shiftKey)) {
             isFootballMode = !isFootballMode;
             rollDistance = 0.0;
             rollAngle = 0.0;
-            console.log("Kick Animation Toggled: " + isFootballMode);
+            console.log("Part 10 Custom Scene Active: " + isFootballMode);
             event.preventDefault();
             return;
         }
@@ -584,12 +688,12 @@ function renderTriangles() {
 
     mat4.lookAt(vMatrix, eye, center, up);
 
-    // --- ANIMATION STEP FOR ROLLING BALL ---
+    // Ball Animation Step
     if (isFootballMode) {
-        var targetZ = 1.8; // Stop point right at goal post
+        var targetZ = 1.6; // Distance to goal post
         if (rollDistance < targetZ) {
             rollDistance += 0.015;
-            rollAngle += 0.15; // Smooth forward rolling spin
+            rollAngle += 0.18;
         }
     }
 
@@ -605,29 +709,65 @@ function renderTriangles() {
         gl.uniform3fv(lightUniforms[l].specular, light.specular);
     }
 
-    for (var i = 0; i < triangleSets.length; i++) {
-        var tSet = triangleSets[i];
+    // Select active array (Parts 1-9 JSON models vs. Part 10 Custom Sketch Mesh)
+    var renderSets = isFootballMode ? customSceneSets : triangleSets;
+
+    for (var i = 0; i < renderSets.length; i++) {
+        var tSet = renderSets[i];
 
         var mMatrix = mat4.create();
 
         if (isFootballMode) {
-            // --- SCENE LAYOUT BASED ON SKETCH ---
+            // --- PART 10 DEDICATED MODEL MATRICES ---
             if (i === 0) {
-                // Set 0: The Stick Figure / Kicker on Left
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.15, 0.4, 0.2));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.15, 0.7, 0.1));
-            } else if (i === 1) {
-                // Set 1: Goal Post on Right Frame
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.5, 2.0));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.8, 0.8, 0.1));
-            } else {
-                // Set 2+: Ball Rolls from Kicker to Goal Post and Stops
+                // 0: Ball - Rolls along Z and spins
                 var ballZ = 0.2 + rollDistance;
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.25, ballZ));
-                
-                // Rotation around X axis makes ball roll realistically forward
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.08, ballZ));
                 mat4.rotateX(mMatrix, mMatrix, rollAngle);
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.3, 0.3, 0.3));
+            } else if (i === 1) {
+                // 1: Head
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.15, 0.55, 0.2));
+            } else if (i === 2) {
+                // 2: Torso
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.15, 0.38, 0.2));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.08, 0.25, 0.08));
+            } else if (i === 3) {
+                // 3: Left Arm
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.08, 0.42, 0.2));
+                mat4.rotateZ(mMatrix, mMatrix, 0.4);
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.04, 0.18, 0.04));
+            } else if (i === 4) {
+                // 4: Right Arm
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.22, 0.42, 0.2));
+                mat4.rotateZ(mMatrix, mMatrix, -0.4);
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.04, 0.18, 0.04));
+            } else if (i === 5) {
+                // 5: Left Leg
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.11, 0.15, 0.2));
+                mat4.rotateZ(mMatrix, mMatrix, 0.2);
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.05, 0.22, 0.05));
+            } else if (i === 6) {
+                // 6: Kicking Leg (Right Leg)
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.20, 0.15, 0.2));
+                var kickAngle = Math.min(rollDistance * 2.0, 0.6); // Kicking motion
+                mat4.rotateX(mMatrix, mMatrix, -kickAngle);
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.05, 0.22, 0.05));
+            } else if (i === 7) {
+                // 7: Goal Post Left Post
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.1, 0.4, 1.8));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.05, 0.8, 0.05));
+            } else if (i === 8) {
+                // 8: Goal Post Right Post
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.9, 0.4, 1.8));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.05, 0.8, 0.05));
+            } else if (i === 9) {
+                // 9: Goal Post Top Bar
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.8, 1.8));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.85, 0.05, 0.05));
+            } else if (i === 10) {
+                // 10: Pitch Turf Ground
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, -0.02, 1.0));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(2.0, 0.02, 2.5));
             }
         } else {
             // Standard Parts 1-9 Transformations
@@ -645,10 +785,7 @@ function renderTriangles() {
             mat4.translate(mMatrix, mMatrix, negCenter);
         }
 
-        // Model-View Matrix = View Matrix * Model Matrix
         mat4.multiply(mvMatrix, vMatrix, mMatrix);
-
-        // 3x3 Inverse Transpose matrix of MV Matrix for vertex normals
         mat3.normalFromMat4(nMatrix, mvMatrix);
 
         gl.uniformMatrix4fv(pMatrixUniform, false, pMatrix);
