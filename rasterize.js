@@ -42,6 +42,10 @@ var eye = vec3.fromValues(0.5, 0.5, -0.5);
 var center = vec3.fromValues(0.5, 0.5, 1.0);
 var up = vec3.fromValues(0, 1, 0);
 
+// --- PART 10: FOOTBALL FIELD GOAL MODE GLOBALS ---
+var isFootballMode = false;
+var kickTime = 0.0;
+
 /* ASSIGNMENT HELPER FUNCTIONS */
 
 function getJSONFile(url, descr) {
@@ -96,14 +100,13 @@ function loadLights() {
     console.log("Loaded " + inputLights.length + " light sources.");
 }
 
-// Helper to compute vertex normals if missing from input file
+// Compute vertex normals if missing
 function computeVertexNormals(vertices, triangles) {
     var normals = new Array(vertices.length);
     for (var i = 0; i < vertices.length; i++) {
         normals[i] = vec3.fromValues(0, 0, 0);
     }
 
-    // Accumulate face normals into adjacent vertices
     for (var t = 0; t < triangles.length; t++) {
         var tri = triangles[t];
         var p0 = vec3.fromValues(vertices[tri[0]][0], vertices[tri[0]][1], vertices[tri[0]][2]);
@@ -123,7 +126,6 @@ function computeVertexNormals(vertices, triangles) {
         vec3.add(normals[tri[2]], normals[tri[2]], faceNormal);
     }
 
-    // Normalize each accumulated vertex normal
     for (var v = 0; v < vertices.length; v++) {
         vec3.normalize(normals[v], normals[v]);
     }
@@ -131,7 +133,7 @@ function computeVertexNormals(vertices, triangles) {
     return normals;
 }
 
-// Read triangles in and load them into WebGL buffers with vertex normal support
+// Read triangles in and load into WebGL buffers
 function loadTriangles() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL, "triangles");
     if (inputTriangles != null) { 
@@ -147,13 +149,11 @@ function loadTriangles() {
             var shininessArray = [];
             var indexArray = []; 
             
-            // Check if vertex normals exist in input file; compute them if missing
             var vNormals = triangleSet.normals;
             if (!vNormals || vNormals.length !== triangleSet.vertices.length) {
                 vNormals = computeVertexNormals(triangleSet.vertices, triangleSet.triangles);
             }
 
-            // Compute geometric center (centroid) for proper rotation pivot
             var centerPt = vec3.fromValues(0, 0, 0);
             for (var v = 0; v < triangleSet.vertices.length; v++) {
                 vec3.add(centerPt, centerPt, triangleSet.vertices[v]);
@@ -165,7 +165,6 @@ function loadTriangles() {
             for (var whichSetVert=0; whichSetVert<triangleSet.vertices.length; whichSetVert++){
                 coordArray.push(triangleSet.vertices[whichSetVert][0], triangleSet.vertices[whichSetVert][1], triangleSet.vertices[whichSetVert][2]);
                 
-                // Push vertex normal
                 var norm = vNormals[whichSetVert];
                 normalArray.push(norm[0], norm[1], norm[2]);
                 
@@ -228,7 +227,7 @@ function loadTriangles() {
     } 
 } 
 
-// Setup the WebGL shaders with smooth vertex normal interpolation
+// Setup Shaders
 function setupShaders() {
     var fShaderCode = `
         precision mediump float;
@@ -241,7 +240,7 @@ function setupShaders() {
         varying float vShininess;
 
         struct Light {
-            vec3 position; // World position
+            vec3 position;
             vec3 ambient;
             vec3 diffuse;
             vec3 specular;
@@ -250,7 +249,7 @@ function setupShaders() {
         const int MAX_LIGHTS = 10;
         uniform Light uLights[MAX_LIGHTS];
         uniform int uNumLights;
-        uniform mat4 uVMatrix; // View Matrix
+        uniform mat4 uVMatrix;
 
         uniform bool uLightingEnabled;
 
@@ -258,7 +257,6 @@ function setupShaders() {
             if (!uLightingEnabled) {
                 gl_FragColor = vec4(vDiffuse, 1.0);
             } else {
-                // Smooth vertex normal interpolated per fragment
                 vec3 N = normalize(vNormal);
                 vec3 V = normalize(-vPosition);
                 vec3 totalColor = vec3(0.0);
@@ -297,7 +295,7 @@ function setupShaders() {
 
         uniform mat4 uMVMatrix;
         uniform mat4 uPMatrix;
-        uniform mat3 uNMatrix; // Inverse transpose matrix for normals
+        uniform mat3 uNMatrix;
 
         varying vec3 vPosition;
         varying vec3 vNormal;
@@ -310,7 +308,6 @@ function setupShaders() {
             vec4 vertexPositionEye4 = uMVMatrix * vec4(vertexPosition, 1.0);
             vPosition = vertexPositionEye4.xyz / vertexPositionEye4.w;
             
-            // Transform vertex normal using Inverse Transpose of MV Matrix
             vNormal = uNMatrix * vertexNormal;
             
             vAmbient = vertexAmbient;
@@ -420,7 +417,7 @@ function setupUI() {
     }
 }
 
-// Keyboard Event Handlers for Parts 4, 5, and 6
+// Keyboard Event Handlers for Parts 4, 5, 6, and Part 10 (!)
 function setupEvents() {
     window.addEventListener("keydown", function(event) {
         var key = event.key;
@@ -438,6 +435,15 @@ function setupEvents() {
         var viewY = vec3.create(); 
         vec3.cross(viewY, viewX, viewZ);
         vec3.normalize(viewY, viewY);
+
+        // --- PART 10: TRIGGER FOOTBALL FIELD GOAL MODE (!) ---
+        if (key === '!' || key === '1' && event.shiftKey) {
+            isFootballMode = !isFootballMode;
+            kickTime = 0.0;
+            console.log("Football Mode Toggled: " + isFootballMode);
+            event.preventDefault();
+            return;
+        }
 
         // Camera Translations
         if (key === 'd') {
@@ -581,39 +587,88 @@ function renderTriangles() {
 
     mat4.lookAt(vMatrix, eye, center, up);
 
+    // --- PART 10: UPDATE ANIMATED FOOTBALL KICK TRAJECTORY ---
+    if (isFootballMode) {
+        kickTime += 0.02;
+        if (kickTime > 2.0 * Math.PI) {
+            kickTime = 0.0; // Loop animation
+        }
+    }
+
     var numLightsToPass = Math.min(inputLights.length, MAX_LIGHTS);
     gl.uniform1i(numLightsUniform, numLightsToPass);
     gl.uniformMatrix4fv(vMatrixUniform, false, vMatrix);
 
     for (var l = 0; l < numLightsToPass; l++) {
         var light = inputLights[l];
-        gl.uniform3f(lightUniforms[l].position, light.x, light.y, light.z);
+        
+        // Dynamic tracking spotlight following the football trajectory in Part 10
+        if (isFootballMode && l === 0) {
+            var ballZ = 0.5 + (kickTime / (2.0 * Math.PI)) * 2.0;
+            var ballY = 0.2 + Math.sin(kickTime) * 0.8;
+            gl.uniform3f(lightUniforms[l].position, 0.5, ballY + 0.5, ballZ);
+        } else {
+            gl.uniform3f(lightUniforms[l].position, light.x, light.y, light.z);
+        }
+
         gl.uniform3fv(lightUniforms[l].ambient, light.ambient);
         gl.uniform3fv(lightUniforms[l].diffuse, light.diffuse);
         gl.uniform3fv(lightUniforms[l].specular, light.specular);
     }
 
+    // Render each triangle set
     for (var i = 0; i < triangleSets.length; i++) {
         var tSet = triangleSets[i];
 
         var mMatrix = mat4.create();
-        mat4.translate(mMatrix, mMatrix, tSet.translation);
-        mat4.translate(mMatrix, mMatrix, tSet.center);
 
-        if (tSet.isHighlighted) {
-            mat4.scale(mMatrix, mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
+        if (isFootballMode) {
+            // --- PART 10 SPECIALIZED MODEL TRANSFORMATIONS ---
+            if (i === 0) {
+                // Set 0: The Turf / Football Field Floor
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.0, 1.5));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(3.0, 0.05, 3.0));
+            } else if (i === 1) {
+                // Set 1: Left Goalpost Pole
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.1, 0.5, 2.2));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.1, 1.2, 0.1));
+            } else if (i === 2) {
+                // Set 2: Right Goalpost Pole
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.9, 0.5, 2.2));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.1, 1.2, 0.1));
+            } else {
+                // Set 3+: The Football (Kicked in 3D Parabola through the posts)
+                var ballX = 0.5;
+                var ballY = 0.1 + Math.sin(kickTime) * 0.9;
+                var ballZ = 0.3 + (kickTime / (2.0 * Math.PI)) * 2.2;
+
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(ballX, ballY, ballZ));
+                
+                // End-over-end endzone football spin
+                mat4.rotateX(mMatrix, mMatrix, kickTime * 4.0);
+                mat4.rotateZ(mMatrix, mMatrix, kickTime * 2.0);
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.5, 0.8, 0.5));
+            }
+        } else {
+            // Standard Parts 1-9 Transformations
+            mat4.translate(mMatrix, mMatrix, tSet.translation);
+            mat4.translate(mMatrix, mMatrix, tSet.center);
+
+            if (tSet.isHighlighted) {
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
+            }
+
+            mat4.multiply(mMatrix, mMatrix, tSet.rotationMatrix);
+
+            var negCenter = vec3.create();
+            vec3.negate(negCenter, tSet.center);
+            mat4.translate(mMatrix, mMatrix, negCenter);
         }
-
-        mat4.multiply(mMatrix, mMatrix, tSet.rotationMatrix);
-
-        var negCenter = vec3.create();
-        vec3.negate(negCenter, tSet.center);
-        mat4.translate(mMatrix, mMatrix, negCenter);
 
         // Model-View Matrix = View Matrix * Model Matrix
         mat4.multiply(mvMatrix, vMatrix, mMatrix);
 
-        // Calculate 3x3 Inverse Transpose matrix of MV Matrix for vertex normals[cite: 7]
+        // 3x3 Inverse Transpose matrix of MV Matrix for vertex normals
         mat3.normalFromMat4(nMatrix, mvMatrix);
 
         gl.uniformMatrix4fv(pMatrixUniform, false, pMatrix);
