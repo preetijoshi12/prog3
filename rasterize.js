@@ -33,9 +33,9 @@ var winLeft = -0.1, winRight = 0.1;
 var winBottom = -0.1, winTop = 0.1;
 var nearDist = 0.1, farDist = 100.0;
 
-// Triangle Sets array and selection state for Parts 5 & 6
+// Triangle Sets array and selection state for Parts 1-9
 var triangleSets = [];
-var customSceneSets = []; // Dedicated Part 10 Procedural Geometry Sets
+var customSceneSets = []; // Part 10 Procedural Triangle Mesh Sets
 var selectedIndex = -1;
 
 // Camera Parameters for Part 4
@@ -43,10 +43,15 @@ var eye = vec3.fromValues(0.5, 0.5, -0.5);
 var center = vec3.fromValues(0.5, 0.5, 1.0);
 var up = vec3.fromValues(0, 1, 0);
 
+// Default Camera Backup for Reset
+var defaultEye = vec3.clone(eye);
+var defaultCenter = vec3.clone(center);
+
 // --- PART 10: CUSTOM GEOMETRY & SKETCH ANIMATION GLOBALS ---
 var isFootballMode = false;
-var rollDistance = 0.0; // Ball roll progress
-var rollAngle = 0.0;    // Ball rotation spin
+var isKickAnimating = false; // Triggered by 'g' key
+var rollDistance = 0.0;     // Ball roll progress toward goal
+var rollAngle = 0.0;        // Ball rotation angle for rolling
 
 /* ASSIGNMENT HELPER FUNCTIONS */
 
@@ -133,7 +138,7 @@ function computeVertexNormals(vertices, triangles) {
     return normals;
 }
 
-// Build standard WebGL buffers for mesh objects
+// Build WebGL buffer objects for triangle meshes
 function createMeshObject(coords, normals, amb, diff, spec, shine, indices) {
     var vBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
@@ -179,7 +184,7 @@ function createMeshObject(coords, normals, amb, diff, spec, shine, indices) {
     };
 }
 
-// Generate 3D Box / Post Geometry
+// Build 3D Box Mesh using triangles
 function createBoxMesh(colorRGB) {
     var coords = [
         -0.5,-0.5, 0.5,  0.5,-0.5, 0.5,  0.5, 0.5, 0.5, -0.5, 0.5, 0.5,
@@ -212,7 +217,7 @@ function createBoxMesh(colorRGB) {
     return createMeshObject(coords, normals, amb, diff, spec, shine, indices);
 }
 
-// Generate 3D Sphere Geometry for Ball & Head
+// Build 3D Sphere Mesh using triangles
 function createSphereMesh(colorRGB, radius, latBands, longBands) {
     var coords = [], normals = [], amb = [], diff = [], spec = [], shine = [], indices = [];
 
@@ -254,25 +259,25 @@ function buildPart10CustomScene() {
     // 0: Ball (Sphere)
     customSceneSets.push(createSphereMesh([0.9, 0.9, 0.9], 0.08, 16, 16));
     // 1: Kicker Head
-    customSceneSets.push(createSphereMesh([0.9, 0.7, 0.5], 0.06, 12, 12));
-    // 2: Torso
-    customSceneSets.push(createBoxMesh([0.8, 0.1, 0.1]));
+    customSceneSets.push(createSphereMesh([0.8, 0.6, 0.4], 0.08, 12, 12));
+    // 2: Torso (Red Shirt)
+    customSceneSets.push(createBoxMesh([0.6, 0.15, 0.15]));
     // 3: Left Arm
-    customSceneSets.push(createBoxMesh([0.8, 0.1, 0.1]));
+    customSceneSets.push(createBoxMesh([0.6, 0.15, 0.15]));
     // 4: Right Arm
-    customSceneSets.push(createBoxMesh([0.8, 0.1, 0.1]));
-    // 5: Left Leg
-    customSceneSets.push(createBoxMesh([0.1, 0.1, 0.8]));
-    // 6: Right Leg
-    customSceneSets.push(createBoxMesh([0.1, 0.1, 0.8]));
+    customSceneSets.push(createBoxMesh([0.6, 0.15, 0.15]));
+    // 5: Left Leg (Blue Pants)
+    customSceneSets.push(createBoxMesh([0.1, 0.1, 0.6]));
+    // 6: Right Kicking Leg (Blue Pants)
+    customSceneSets.push(createBoxMesh([0.1, 0.1, 0.6]));
     // 7: Goalpost Left
-    customSceneSets.push(createBoxMesh([0.9, 0.9, 0.9]));
+    customSceneSets.push(createBoxMesh([0.95, 0.95, 0.95]));
     // 8: Goalpost Right
-    customSceneSets.push(createBoxMesh([0.9, 0.9, 0.9]));
+    customSceneSets.push(createBoxMesh([0.95, 0.95, 0.95]));
     // 9: Goalpost Top Bar
-    customSceneSets.push(createBoxMesh([0.9, 0.9, 0.9]));
+    customSceneSets.push(createBoxMesh([0.95, 0.95, 0.95]));
     // 10: Pitch Turf Ground
-    customSceneSets.push(createBoxMesh([0.1, 0.6, 0.1]));
+    customSceneSets.push(createBoxMesh([0.05, 0.4, 0.05]));
 }
 
 function loadTriangles() {
@@ -325,7 +330,6 @@ function loadTriangles() {
         console.log("Loaded " + triangleSets.length + " default triangle sets.");
     } 
 
-    // Build custom geometry sets for Part 10
     buildPart10CustomScene();
 } 
 
@@ -541,7 +545,28 @@ function setupEvents() {
             isFootballMode = !isFootballMode;
             rollDistance = 0.0;
             rollAngle = 0.0;
+            isKickAnimating = false;
+
+            if (isFootballMode) {
+                // Adjust Camera to Match Sketch Perspective (Behind & Beside Kicker)
+                eye = vec3.fromValues(0.7, 0.45, 0.0);
+                center = vec3.fromValues(0.5, 0.25, 2.0);
+            } else {
+                // Restore Default Camera
+                eye = vec3.clone(defaultEye);
+                center = vec3.clone(defaultCenter);
+            }
             console.log("Part 10 Custom Scene Active: " + isFootballMode);
+            event.preventDefault();
+            return;
+        }
+
+        // --- PART 10: INTERACTIVE 'g' KEY TO KICK BALL TO GOAL ---
+        if ((key === 'g' || key === 'G') && isFootballMode) {
+            isKickAnimating = true;
+            rollDistance = 0.0;
+            rollAngle = 0.0;
+            console.log("Ball Kicked!");
             event.preventDefault();
             return;
         }
@@ -688,12 +713,14 @@ function renderTriangles() {
 
     mat4.lookAt(vMatrix, eye, center, up);
 
-    // Ball Animation Step
-    if (isFootballMode) {
-        var targetZ = 1.6; // Distance to goal post
+    // Ball Kick & Roll Animation Progress
+    if (isFootballMode && isKickAnimating) {
+        var targetZ = 1.35; // Stop point inside goal post
         if (rollDistance < targetZ) {
-            rollDistance += 0.015;
-            rollAngle += 0.18;
+            rollDistance += 0.02;
+            rollAngle += 0.22;
+        } else {
+            isKickAnimating = false; // Ball reached goal post
         }
     }
 
@@ -709,7 +736,6 @@ function renderTriangles() {
         gl.uniform3fv(lightUniforms[l].specular, light.specular);
     }
 
-    // Select active array (Parts 1-9 JSON models vs. Part 10 Custom Sketch Mesh)
     var renderSets = isFootballMode ? customSceneSets : triangleSets;
 
     for (var i = 0; i < renderSets.length; i++) {
@@ -718,55 +744,55 @@ function renderTriangles() {
         var mMatrix = mat4.create();
 
         if (isFootballMode) {
-            // --- PART 10 DEDICATED MODEL MATRICES ---
+            // --- SKETCH-ACCURATE MODEL MATRIX LAYOUT ---
             if (i === 0) {
-                // 0: Ball - Rolls along Z and spins
-                var ballZ = 0.2 + rollDistance;
+                // 0: Ball - Starts in front of kicker, rolls to goal when 'g' is pressed
+                var ballZ = 0.5 + rollDistance;
                 mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.08, ballZ));
                 mat4.rotateX(mMatrix, mMatrix, rollAngle);
             } else if (i === 1) {
                 // 1: Head
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.15, 0.55, 0.2));
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.65, 0.48, 0.3));
             } else if (i === 2) {
-                // 2: Torso
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.15, 0.38, 0.2));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.08, 0.25, 0.08));
+                // 2: Torso (Red Shirt)
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.65, 0.32, 0.3));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.12, 0.22, 0.1));
             } else if (i === 3) {
-                // 3: Left Arm
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.08, 0.42, 0.2));
-                mat4.rotateZ(mMatrix, mMatrix, 0.4);
+                // 3: Left Arm (Raised)
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.58, 0.38, 0.3));
+                mat4.rotateZ(mMatrix, mMatrix, 0.6);
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.04, 0.18, 0.04));
             } else if (i === 4) {
-                // 4: Right Arm
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.22, 0.42, 0.2));
-                mat4.rotateZ(mMatrix, mMatrix, -0.4);
+                // 4: Right Arm (Raised)
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.72, 0.38, 0.3));
+                mat4.rotateZ(mMatrix, mMatrix, -0.6);
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.04, 0.18, 0.04));
             } else if (i === 5) {
-                // 5: Left Leg
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.11, 0.15, 0.2));
+                // 5: Left Leg (Standing Leg)
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.61, 0.12, 0.3));
                 mat4.rotateZ(mMatrix, mMatrix, 0.2);
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.05, 0.22, 0.05));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.06, 0.22, 0.06));
             } else if (i === 6) {
-                // 6: Kicking Leg (Right Leg)
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.20, 0.15, 0.2));
-                var kickAngle = Math.min(rollDistance * 2.0, 0.6); // Kicking motion
-                mat4.rotateX(mMatrix, mMatrix, -kickAngle);
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.05, 0.22, 0.05));
+                // 6: Right Leg (Kicking Leg - Swings forward when 'g' pressed)
+                var legSwing = isKickAnimating ? Math.sin(Math.min(rollDistance * 4.0, Math.PI / 2)) * 0.8 : 0.0;
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.69, 0.12, 0.3));
+                mat4.rotateX(mMatrix, mMatrix, -legSwing);
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.06, 0.22, 0.06));
             } else if (i === 7) {
-                // 7: Goal Post Left Post
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.1, 0.4, 1.8));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.05, 0.8, 0.05));
+                // 7: Goalpost Left Post
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.3, 0.25, 1.9));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.03, 0.45, 0.03));
             } else if (i === 8) {
-                // 8: Goal Post Right Post
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.9, 0.4, 1.8));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.05, 0.8, 0.05));
+                // 8: Goalpost Right Post
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.7, 0.25, 1.9));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.03, 0.45, 0.03));
             } else if (i === 9) {
-                // 9: Goal Post Top Bar
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.8, 1.8));
-                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.85, 0.05, 0.05));
+                // 9: Goalpost Top Bar
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, 0.47, 1.9));
+                mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.43, 0.03, 0.03));
             } else if (i === 10) {
                 // 10: Pitch Turf Ground
-                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, -0.02, 1.0));
+                mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.5, -0.01, 1.0));
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(2.0, 0.02, 2.5));
             }
         } else {
