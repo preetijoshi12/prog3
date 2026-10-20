@@ -28,7 +28,8 @@ var lightUniforms = [];
 var MAX_LIGHTS = 10;
 var inputLights = [];
 
-// Window Frustum Projection Parameters (in view space at near plane)
+// Window Frustum Projection Parameters (at near plane nearDist = 0.1)
+// Standard scale matching perspective field of view
 var winLeft = -0.1, winRight = 0.1;
 var winBottom = -0.1, winTop = 0.1;
 var nearDist = 0.1, farDist = 100.0;
@@ -76,6 +77,7 @@ function setupWebGL() {
       if (gl == null) {
         throw "unable to create gl context -- is your browser gl ready?";
       } else {
+        gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0.0, 0.0, 0.0, 1.0); 
         gl.clearDepth(1.0); 
         gl.enable(gl.DEPTH_TEST); 
@@ -157,7 +159,7 @@ function loadTriangles() {
 
             var shineBuffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, shineBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shininessBuffer), gl.STATIC_DRAW);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shininessArray), gl.STATIC_DRAW);
 
             var tBuffer = gl.createBuffer();
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tBuffer);
@@ -348,12 +350,10 @@ function setupShaders() {
 } 
 
 function updateProjectionMatrix() {
-    // Mat4 Frustum uses view space coordinates (left, right, bottom, top, near, far)
     mat4.frustum(pMatrix, winLeft, winRight, winBottom, winTop, nearDist, farDist);
 }
 
 function setupUI() {
-    // Button event listener to update viewport size
     var updateViewportBtn = document.getElementById("updateViewportBtn");
     if (updateViewportBtn) {
         updateViewportBtn.addEventListener("click", function() {
@@ -368,7 +368,6 @@ function setupUI() {
         });
     }
 
-    // Button event listener to update frustum projection parameters
     var updateProjBtn = document.getElementById("updateProjectionBtn");
     if (updateProjBtn) {
         updateProjBtn.addEventListener("click", function() {
@@ -388,7 +387,6 @@ function setupEvents() {
         var translateStep = 0.05;
         var rotateStep = 0.03;
 
-        // Compute viewing coordinate axes
         var viewZ = vec3.create(); // Forward
         vec3.subtract(viewZ, center, eye);
         vec3.normalize(viewZ, viewZ);
