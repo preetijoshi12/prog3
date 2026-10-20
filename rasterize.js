@@ -49,7 +49,6 @@ var defaultCenter = vec3.clone(center);
 
 // --- PART 10: CUSTOM GEOMETRY & SKETCH ANIMATION GLOBALS ---
 var isFootballMode = false;
-var isKickAnimating = false; // Triggered by 'g' key
 var rollDistance = 0.0;     // Ball roll progress toward goal
 var rollAngle = 0.0;        // Ball rotation angle for rolling
 
@@ -545,10 +544,9 @@ function setupEvents() {
             isFootballMode = !isFootballMode;
             rollDistance = 0.0;
             rollAngle = 0.0;
-            isKickAnimating = false;
 
             if (isFootballMode) {
-                // Raised Camera Angle looking slightly down at goalpost and ball
+                // Raised Camera Angle looking down at goalpost and ball
                 eye = vec3.fromValues(0.5, 0.7, -0.4);
                 center = vec3.fromValues(0.5, 0.2, 2.0);
             } else {
@@ -561,12 +559,20 @@ function setupEvents() {
             return;
         }
 
-        // --- PART 10: INTERACTIVE 'g' KEY TO KICK BALL TO GOAL ---
+        // --- PART 10: STEPWISE 'g' / 'G' KEY PRESS TO ADVANCE BALL TOWARD GOAL ---
         if ((key === 'g' || key === 'G') && isFootballMode) {
-            isKickAnimating = true;
-            rollDistance = 0.0;
-            rollAngle = 0.0;
-            console.log("Ball Kicked!");
+            var targetZ = 1.6; // Maximum distance inside goal post
+            var stepAmount = 0.1; // Distance advanced per key press
+            
+            if (rollDistance < targetZ) {
+                rollDistance += stepAmount;
+                rollAngle += 0.8; // Spin ball as it advances
+            } else {
+                // Reset ball position if pressed at maximum distance
+                rollDistance = 0.0;
+                rollAngle = 0.0;
+            }
+            console.log("Ball position updated: rollDistance = " + rollDistance.toFixed(2));
             event.preventDefault();
             return;
         }
@@ -713,17 +719,6 @@ function renderTriangles() {
 
     mat4.lookAt(vMatrix, eye, center, up);
 
-    // Ball Kick & Roll Animation Progress
-    if (isFootballMode && isKickAnimating) {
-        var targetZ = 1.6; // Stop point inside goal post
-        if (rollDistance < targetZ) {
-            rollDistance += 0.02;
-            rollAngle += 0.22;
-        } else {
-            isKickAnimating = false; // Ball reached goal post
-        }
-    }
-
     var numLightsToPass = Math.min(inputLights.length, MAX_LIGHTS);
     gl.uniform1i(numLightsUniform, numLightsToPass);
     gl.uniformMatrix4fv(vMatrixUniform, false, vMatrix);
@@ -746,12 +741,12 @@ function renderTriangles() {
         if (isFootballMode) {
             // --- SKETCH-ACCURATE UNBLOCKED VIEW LAYOUT ---
             if (i === 0) {
-                // 0: Ball - Shifted to center-left (X = 0.45), rolls straight to goal
+                // 0: Ball - Shifted to center-left (X = 0.45), rolls straight to goal step-by-step
                 var ballZ = 0.2 + rollDistance;
                 mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.45, 0.08, ballZ));
                 mat4.rotateX(mMatrix, mMatrix, rollAngle);
             } else if (i === 1) {
-                // 1: Head (Shifted to right side X = 0.85)
+                // 1: Head (Right side X = 0.85)
                 mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.85, 0.48, 0.2));
             } else if (i === 2) {
                 // 2: Torso (Red Shirt)
@@ -773,8 +768,8 @@ function renderTriangles() {
                 mat4.rotateZ(mMatrix, mMatrix, 0.15);
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.06, 0.22, 0.06));
             } else if (i === 6) {
-                // 6: Right Leg (Kicking Leg - Swings forward when 'g' pressed)
-                var legSwing = isKickAnimating ? Math.sin(Math.min(rollDistance * 4.0, Math.PI / 2)) * 0.8 : 0.0;
+                // 6: Right Leg (Kicking Leg - Swings as ball advances)
+                var legSwing = Math.min(rollDistance * 2.0, 0.8);
                 mat4.translate(mMatrix, mMatrix, vec3.fromValues(0.90, 0.12, 0.2));
                 mat4.rotateX(mMatrix, mMatrix, -legSwing);
                 mat4.scale(mMatrix, mMatrix, vec3.fromValues(0.06, 0.22, 0.06));
