@@ -389,33 +389,45 @@ function setupEvents() {
             var modelTranslateStep = 0.05;
             var modelRotateStep = 0.05;
 
-            if (key === 'k') { // Translate selection left along view X
+            if (key === 'k') { // Translate selection left along view X[cite: 6]
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, -modelTranslateStep);
-            } else if (key === ';') { // Translate selection right along view X
+                event.preventDefault();
+            } else if (key === ';') { // Translate selection right along view X[cite: 6]
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewX, modelTranslateStep);
-            } else if (key === 'o') { // Translate selection forward along view Z
+                event.preventDefault();
+            } else if (key === 'o') { // Translate selection forward along view Z[cite: 6]
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, modelTranslateStep);
-            } else if (key === 'l') { // Translate selection backward along view Z
+                event.preventDefault();
+            } else if (key === 'l') { // Translate selection backward along view Z[cite: 6]
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewZ, -modelTranslateStep);
-            } else if (key === 'L') { // Rotate selection backward (pitch) around view X
-                curSet.rotation[0] -= modelRotateStep;
-            } else if (key === 'i') { // Translate selection up along view Y
+                event.preventDefault();
+            } else if (key === 'i') { // Translate selection up along view Y[cite: 6]
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, modelTranslateStep);
-            } else if (key === 'p') { // Translate selection down along view Y
+                event.preventDefault();
+            } else if (key === 'p') { // Translate selection down along view Y[cite: 6]
                 vec3.scaleAndAdd(curSet.translation, curSet.translation, viewY, -modelTranslateStep);
+                event.preventDefault();
             } 
             
             // Rotations
-            else if (key === 'K') { // Rotate selection left (yaw) around view Y
+            else if (key === 'K') { // Rotate selection left (yaw) around view Y[cite: 6]
                 curSet.rotation[1] += modelRotateStep;
-            } else if (key === ':') { // Rotate selection right (yaw) around view Y
+                event.preventDefault();
+            } else if (key === ':') { // Rotate selection right (yaw) around view Y[cite: 6]
                 curSet.rotation[1] -= modelRotateStep;
-            } else if (key === 'O') { // Rotate selection forward (pitch) around view X
+                event.preventDefault();
+            } else if (key === 'O') { // Rotate selection forward (pitch) around view X[cite: 6]
                 curSet.rotation[0] += modelRotateStep;
-            } else if (key === 'I') { // Rotate selection clockwise (roll) around view Z
+                event.preventDefault();
+            } else if (key === 'L') { // Rotate selection backward (pitch) around view X[cite: 6]
+                curSet.rotation[0] -= modelRotateStep;
+                event.preventDefault();
+            } else if (key === 'I') { // Rotate selection clockwise (roll) around view Z[cite: 6]
                 curSet.rotation[2] += modelRotateStep;
-            } else if (key === 'P') { // Rotate selection counterclockwise (roll) around view Z
+                event.preventDefault();
+            } else if (key === 'P') { // Rotate selection counterclockwise (roll) around view Z[cite: 6]
                 curSet.rotation[2] -= modelRotateStep;
+                event.preventDefault();
             }
         }
     });
