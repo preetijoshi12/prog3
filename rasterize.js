@@ -1,16 +1,16 @@
 /* GLOBAL CONSTANTS AND VARIABLES */
 
-var WIN_Z = 0;  
-var WIN_LEFT = 0; var WIN_RIGHT = 1;  
-var WIN_BOTTOM = 0; var WIN_TOP = 1;  
+const WIN_Z = 0;  
+const WIN_LEFT = -0.5; const WIN_RIGHT = 0.5;  
+const WIN_BOTTOM = -0.5; const WIN_TOP = 0.5;  
 
 const INPUT_TRIANGLES_URL = "https://ncsucgclass.github.io/prog3/triangles2.json"; 
 const INPUT_ELLIPSOIDS_URL = "https://ncsucgclass.github.io/prog3/ellipsoids.json";
-const INPUT_LIGHTS_URL = "https://ncsucgclass.github.io/prog3/lights.json"; // Part 7: Lights JSON URL
+const INPUT_LIGHTS_URL = "https://ncsucgclass.github.io/prog3/lights.json"; // Part 7: Lights URL
 
 /* webgl globals */
 var gl = null; 
-var lights = []; // Part 7: Array to hold loaded lights
+var lights = []; // Part 7: Array to hold multiple lights
 
 var vertexPositionAttrib; 
 var vertexNormalAttrib;
@@ -76,7 +76,7 @@ function setupWebGL() {
       if (gl == null) {
         throw "unable to create gl context -- is your browser gl ready?";
       } else {
-         // Part 7: Ensure initial viewport matches canvas dimensions
+         // Part 7: Flexible viewport based on canvas dimensions
          gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0.0, 0.0, 0.0, 1.0); 
         gl.clearDepth(1.0); 
@@ -97,7 +97,7 @@ function loadLights() {
     }
 }
 
-// read triangles in, load them into webgl buffers
+// read triangles in, load them into webgl buffers (Updated with translation & rotation state for Parts 5 & 6)
 function loadTriangles() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL, "triangles");
     if (inputTriangles != null) { 
@@ -156,6 +156,7 @@ function loadTriangles() {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tBuffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexArray), gl.STATIC_DRAW);
 
+            // Store each triangle set with translation, rotation, and model matrix states
             triangleSets.push({
                 vertexBuffer: vBuffer,
                 normalBuffer: nBuffer,
@@ -167,7 +168,7 @@ function loadTriangles() {
                 triBufferSize: indexArray.length,
                 mMatrix: mat4.create(),
                 translation: vec3.create(),
-                rotation: mat4.create()
+                rotation: mat4.create() // Identity rotation initially
             });
         } 
         console.log("Loaded " + triangleSets.length + " triangle sets.");
@@ -332,11 +333,10 @@ function setupShaders() {
     updateProjectionMatrix();
 } 
 
-// Part 7: Helper function to update projection matrix and viewport dynamically
+// Part 7: Helper function to update projection matrix
 function updateProjectionMatrix() {
     var near = 0.1;
     var far = 100.0;
-    // Scale window coordinates by near distance to properly map frustum bounds
     mat4.frustum(
         pMatrix, 
         WIN_LEFT * near, 
@@ -348,52 +348,56 @@ function updateProjectionMatrix() {
     );
 }
 
+// setup Events for View Control, Model Selection (Part 5), and Model Transformation (Part 6)
 function setupEvents() {
     window.addEventListener("keydown", function(event) {
         var key = event.key;
         var translateStep = 0.05;
         var rotateStep = 0.03;
 
-        var viewZ = vec3.create(); 
+        // Compute viewing coordinate axes
+        var viewZ = vec3.create(); // Forward
         vec3.subtract(viewZ, center, eye);
         vec3.normalize(viewZ, viewZ);
 
-        var viewX = vec3.create(); 
+        var viewX = vec3.create(); // Side (X)
         vec3.cross(viewX, viewZ, up);
         vec3.normalize(viewX, viewX);
 
-        var viewY = vec3.create(); 
+        var viewY = vec3.create(); // Up (Y)
         vec3.cross(viewY, viewX, viewZ);
         vec3.normalize(viewY, viewY);
 
-        if (key === 'd') { 
-            vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
-            vec3.scaleAndAdd(center, center, viewX, -translateStep);
-        } else if (key === 'a') { 
+        // Camera Translations (a, d, w, s, q, e)
+        if (key === 'a') { 
             vec3.scaleAndAdd(eye, eye, viewX, translateStep);
             vec3.scaleAndAdd(center, center, viewX, translateStep);
+        } else if (key === 'd') { 
+            vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
+            vec3.scaleAndAdd(center, center, viewX, -translateStep);
         } else if (key === 'w') { 
             vec3.scaleAndAdd(eye, eye, viewZ, translateStep);
             vec3.scaleAndAdd(center, center, viewZ, translateStep);
         } else if (key === 's') { 
             vec3.scaleAndAdd(eye, eye, viewZ, -translateStep);
             vec3.scaleAndAdd(center, center, viewZ, -translateStep);
-        } else if (key === 'e') { 
+        } else if (key === 'q') { 
             vec3.scaleAndAdd(eye, eye, viewY, translateStep);
             vec3.scaleAndAdd(center, center, viewY, translateStep);
-        } else if (key === 'q') { 
+        } else if (key === 'e') { 
             vec3.scaleAndAdd(eye, eye, viewY, -translateStep);
             vec3.scaleAndAdd(center, center, viewY, -translateStep);
         }
 
+        // Camera Rotations (A, D, W, S)
         else if (key === 'A') { 
             let rotMat = mat4.create();
-            mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
+            mat4.rotate(rotMat, rotMat, rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
         } else if (key === 'D') { 
             let rotMat = mat4.create();
-            mat4.rotate(rotMat, rotMat, rotateStep, viewY);
+            mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
             vec3.transformMat4(viewZ, viewZ, rotMat);
             vec3.add(center, eye, viewZ);
         } else if (key === 'W') { 
@@ -408,6 +412,7 @@ function setupEvents() {
             vec3.add(center, eye, viewZ);
         }
 
+        // Part 5: Model Selection and Highlighting
         else if (key === 'ArrowRight' || event.keyCode === 39) {
             event.preventDefault();
             if (triangleSets.length > 0) {
@@ -423,67 +428,70 @@ function setupEvents() {
             selectedIndex = -1;
         }
 
+        // Part 6: Interactively transform the selected model
         if (selectedIndex !== -1) {
             var tSet = triangleSets[selectedIndex];
 
-            if (key === 'k') { 
+            if (key === 'k') { // Translate selection left along view X
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewX, -translateStep);
                 event.preventDefault();
-            } else if (key === ';' || key === ',') { 
+            } else if (key === ';' || key === ',') { // Translate selection right along view X
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewX, translateStep);
                 event.preventDefault();
-            } else if (key === 'l') { 
+            } else if (key === 'l') { // Translate selection forward along view Z
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewZ, translateStep);
                 event.preventDefault();
-            } else if (key === 'o') { 
+            } else if (key === 'o') { // Translate selection backward along view Z
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewZ, -translateStep);
                 event.preventDefault();
-            } else if (key === 'i') { 
+            } else if (key === 'i') { // Translate selection up along view Y
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewY, translateStep);
                 event.preventDefault();
-            } else if (key === 'p') { 
+            } else if (key === 'p') { // Translate selection down along view Y
                 vec3.scaleAndAdd(tSet.translation, tSet.translation, viewY, -translateStep);
                 event.preventDefault();
-            } else if (key === 'K') { 
+            } else if (key === 'K') { // Rotate selection left around view Y (yaw)
                 let rotMat = mat4.create();
                 mat4.rotate(rotMat, rotMat, rotateStep, viewY);
                 mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
                 event.preventDefault();
-            } else if (key === ':' || (key === 'K' && event.shiftKey)) { 
+            } else if (key === ':' || (key === 'K' && event.shiftKey)) { // Rotate selection right around view Y (yaw)
                 let rotMat = mat4.create();
                 mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
                 mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
                 event.preventDefault();
-            } else if (key === 'O') { 
+            } else if (key === 'O') { // Rotate selection forward around view X (pitch)
                 let rotMat = mat4.create();
                 mat4.rotate(rotMat, rotMat, rotateStep, viewX);
                 mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
                 event.preventDefault();
-            } else if (key === 'L') { 
+            } else if (key === 'L') { // Rotate selection backward around view X (pitch)
                 let rotMat = mat4.create();
                 mat4.rotate(rotMat, rotMat, -rotateStep, viewX);
                 mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
                 event.preventDefault();
-            } else if (key === 'I') { 
+            } else if (key === 'I') { // Rotate selection clockwise around view Z (roll)
                 let rotMat = mat4.create();
                 mat4.rotate(rotMat, rotMat, rotateStep, viewZ);
                 mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
                 event.preventDefault();
-            } else if (key === 'P') { 
+            } else if (key === 'P') { // Rotate selection counterclockwise around view Z (roll)
                 let rotMat = mat4.create();
                 mat4.rotate(rotMat, rotMat, -rotateStep, viewZ);
                 mat4.multiply(tSet.rotation, rotMat, tSet.rotation);
                 event.preventDefault();
             }
-        }
+          }
     });
 }
 
 function renderTriangles() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
 
+    // Check state of HTML lighting checkbox
     var lightingEnabled = document.getElementById("lightingCheck").checked;
 
+    // Compute base View Matrix
     var vMatrix = mat4.create();
     mat4.lookAt(vMatrix, eye, center, up);
 
@@ -501,6 +509,7 @@ function renderTriangles() {
         gl.uniform3f(lightSpecularUniforms[i], light.specular[0], light.specular[1], light.specular[2]);
     }
 
+    // Render each triangle set using its model matrix (Translation * Rotation * Highlighting Scale)
     for (var i = 0; i < triangleSets.length; i++) {
         var tSet = triangleSets[i];
 
@@ -511,6 +520,7 @@ function renderTriangles() {
             mat4.scale(tSet.mMatrix, tSet.mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
         }
 
+        // Model-View Matrix = View Matrix * Model Matrix
         mat4.multiply(mvMatrix, vMatrix, tSet.mMatrix);
         mat3.normalFromMat4(nMatrix, mvMatrix);
 
@@ -547,7 +557,7 @@ function renderTriangles() {
 function main() {
     setupWebGL(); 
     loadTriangles(); 
-    loadLights(); // Part 7: Load lights from JSON
+    loadLights(); // Part 7: Load lights from lights.json
     setupShaders(); 
     setupEvents(); 
     renderTriangles(); 
