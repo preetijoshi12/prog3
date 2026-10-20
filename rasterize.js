@@ -28,8 +28,7 @@ var lightUniforms = [];
 var MAX_LIGHTS = 10;
 var inputLights = [];
 
-// Window Frustum Projection Parameters (at near plane nearDist = 0.1)
-// Standard scale matching perspective field of view
+// Window Frustum Projection Parameters
 var winLeft = -0.1, winRight = 0.1;
 var winBottom = -0.1, winTop = 0.1;
 var nearDist = 0.1, farDist = 100.0;
@@ -97,7 +96,42 @@ function loadLights() {
     console.log("Loaded " + inputLights.length + " light sources.");
 }
 
-// read triangles in, load them into webgl buffers
+// Helper to compute vertex normals if missing from input file
+function computeVertexNormals(vertices, triangles) {
+    var normals = new Array(vertices.length);
+    for (var i = 0; i < vertices.length; i++) {
+        normals[i] = vec3.fromValues(0, 0, 0);
+    }
+
+    // Accumulate face normals into adjacent vertices
+    for (var t = 0; t < triangles.length; t++) {
+        var tri = triangles[t];
+        var p0 = vec3.fromValues(vertices[tri[0]][0], vertices[tri[0]][1], vertices[tri[0]][2]);
+        var p1 = vec3.fromValues(vertices[tri[1]][0], vertices[tri[1]][1], vertices[tri[1]][2]);
+        var p2 = vec3.fromValues(vertices[tri[2]][0], vertices[tri[2]][1], vertices[tri[2]][2]);
+
+        var v10 = vec3.create();
+        var v20 = vec3.create();
+        vec3.subtract(v10, p1, p0);
+        vec3.subtract(v20, p2, p0);
+
+        var faceNormal = vec3.create();
+        vec3.cross(faceNormal, v10, v20);
+
+        vec3.add(normals[tri[0]], normals[tri[0]], faceNormal);
+        vec3.add(normals[tri[1]], normals[tri[1]], faceNormal);
+        vec3.add(normals[tri[2]], normals[tri[2]], faceNormal);
+    }
+
+    // Normalize each accumulated vertex normal
+    for (var v = 0; v < vertices.length; v++) {
+        vec3.normalize(normals[v], normals[v]);
+    }
+
+    return normals;
+}
+
+// Read triangles in and load them into WebGL buffers with vertex normal support
 function loadTriangles() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL, "triangles");
     if (inputTriangles != null) { 
@@ -113,6 +147,12 @@ function loadTriangles() {
             var shininessArray = [];
             var indexArray = []; 
             
+            // Check if vertex normals exist in input file; compute them if missing
+            var vNormals = triangleSet.normals;
+            if (!vNormals || vNormals.length !== triangleSet.vertices.length) {
+                vNormals = computeVertexNormals(triangleSet.vertices, triangleSet.triangles);
+            }
+
             // Compute geometric center (centroid) for proper rotation pivot
             var centerPt = vec3.fromValues(0, 0, 0);
             for (var v = 0; v < triangleSet.vertices.length; v++) {
@@ -124,7 +164,10 @@ function loadTriangles() {
 
             for (var whichSetVert=0; whichSetVert<triangleSet.vertices.length; whichSetVert++){
                 coordArray.push(triangleSet.vertices[whichSetVert][0], triangleSet.vertices[whichSetVert][1], triangleSet.vertices[whichSetVert][2]);
-                normalArray.push(triangleSet.normals[whichSetVert][0], triangleSet.normals[whichSetVert][1], triangleSet.normals[whichSetVert][2]);
+                
+                // Push vertex normal
+                var norm = vNormals[whichSetVert];
+                normalArray.push(norm[0], norm[1], norm[2]);
                 
                 ambientArray.push(mat.ambient[0], mat.ambient[1], mat.ambient[2]);
                 diffuseArray.push(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
@@ -185,7 +228,7 @@ function loadTriangles() {
     } 
 } 
 
-// setup the webGL shaders with multi-light Blinn-Phong model
+// Setup the WebGL shaders with smooth vertex normal interpolation
 function setupShaders() {
     var fShaderCode = `
         precision mediump float;
@@ -198,7 +241,7 @@ function setupShaders() {
         varying float vShininess;
 
         struct Light {
-            vec3 position; // world position
+            vec3 position; // World position
             vec3 ambient;
             vec3 diffuse;
             vec3 specular;
@@ -207,35 +250,31 @@ function setupShaders() {
         const int MAX_LIGHTS = 10;
         uniform Light uLights[MAX_LIGHTS];
         uniform int uNumLights;
-        uniform mat4 uVMatrix; // View Matrix to convert light world pos to eye space
+        uniform mat4 uVMatrix; // View Matrix
 
         uniform bool uLightingEnabled;
 
         void main(void) {
             if (!uLightingEnabled) {
-                // Part 2: Unlit flat diffuse color
                 gl_FragColor = vec4(vDiffuse, 1.0);
             } else {
+                // Smooth vertex normal interpolated per fragment
                 vec3 N = normalize(vNormal);
-                vec3 V = normalize(-vPosition); // Eye is at origin in eye space
+                vec3 V = normalize(-vPosition);
                 vec3 totalColor = vec3(0.0);
 
                 for (int i = 0; i < MAX_LIGHTS; i++) {
                     if (i >= uNumLights) break;
 
-                    // Transform light position to Eye Space
                     vec3 lightPosEye = (uVMatrix * vec4(uLights[i].position, 1.0)).xyz;
                     vec3 L = normalize(lightPosEye - vPosition);
                     vec3 H = normalize(L + V);
 
-                    // Ambient contribution
                     vec3 ambient = vAmbient * uLights[i].ambient;
 
-                    // Diffuse contribution
                     float diff = max(dot(N, L), 0.0);
                     vec3 diffuse = diff * (vDiffuse * uLights[i].diffuse);
 
-                    // Specular contribution (Blinn-Phong)
                     float spec = pow(max(dot(N, H), 0.0), vShininess);
                     if (diff <= 0.0) spec = 0.0;
                     vec3 specular = spec * (vSpecular * uLights[i].specular);
@@ -258,7 +297,7 @@ function setupShaders() {
 
         uniform mat4 uMVMatrix;
         uniform mat4 uPMatrix;
-        uniform mat3 uNMatrix;
+        uniform mat3 uNMatrix; // Inverse transpose matrix for normals
 
         varying vec3 vPosition;
         varying vec3 vNormal;
@@ -271,7 +310,9 @@ function setupShaders() {
             vec4 vertexPositionEye4 = uMVMatrix * vec4(vertexPosition, 1.0);
             vPosition = vertexPositionEye4.xyz / vertexPositionEye4.w;
             
+            // Transform vertex normal using Inverse Transpose of MV Matrix
             vNormal = uNMatrix * vertexNormal;
+            
             vAmbient = vertexAmbient;
             vDiffuse = vertexDiffuse;
             vSpecular = vertexSpecular;
@@ -330,7 +371,6 @@ function setupShaders() {
                 lightingEnabledUniform = gl.getUniformLocation(shaderProgram, "uLightingEnabled");
                 numLightsUniform = gl.getUniformLocation(shaderProgram, "uNumLights");
 
-                // Get array locations for lights struct
                 for (var l = 0; l < MAX_LIGHTS; l++) {
                     lightUniforms.push({
                         position: gl.getUniformLocation(shaderProgram, "uLights[" + l + "].position"),
@@ -387,19 +427,19 @@ function setupEvents() {
         var translateStep = 0.05;
         var rotateStep = 0.03;
 
-        var viewZ = vec3.create(); // Forward
+        var viewZ = vec3.create(); 
         vec3.subtract(viewZ, center, eye);
         vec3.normalize(viewZ, viewZ);
 
-        var viewX = vec3.create(); // Side (X)
+        var viewX = vec3.create(); 
         vec3.cross(viewX, viewZ, up);
         vec3.normalize(viewX, viewX);
 
-        var viewY = vec3.create(); // Up (Y)
+        var viewY = vec3.create(); 
         vec3.cross(viewY, viewX, viewZ);
         vec3.normalize(viewY, viewY);
 
-        // --- CAMERA TRANSLATIONS (a, d, w, s, q, e) ---
+        // Camera Translations
         if (key === 'd') {
             vec3.scaleAndAdd(eye, eye, viewX, -translateStep);
             vec3.scaleAndAdd(center, center, viewX, -translateStep);
@@ -420,7 +460,7 @@ function setupEvents() {
             vec3.scaleAndAdd(center, center, viewY, -translateStep);
         }
 
-        // --- CAMERA ROTATIONS (A, D, W, S) ---
+        // Camera Rotations
         else if (key === 'A') {
             let rotMat = mat4.create();
             mat4.rotate(rotMat, rotMat, -rotateStep, viewY);
@@ -443,7 +483,7 @@ function setupEvents() {
             vec3.add(center, eye, viewZ);
         }
 
-        // --- PART 5: MODEL SELECTION ---
+        // Model Selection
         else if (key === 'ArrowRight' || event.keyCode === 39) {
             event.preventDefault();
             if (triangleSets.length > 0) {
@@ -470,7 +510,7 @@ function setupEvents() {
             }
         }
 
-        // --- PART 6: INTERACTIVE MODEL TRANSFORMATIONS ---
+        // Model Transformations
         else if (selectedIndex !== -1) {
             var curSet = triangleSets[selectedIndex];
             var modelTranslateStep = 0.05;
@@ -539,10 +579,8 @@ function renderTriangles() {
 
     var lightingEnabled = document.getElementById("lightingCheck").checked;
 
-    // Compute base View Matrix
     mat4.lookAt(vMatrix, eye, center, up);
 
-    // Pass Lights Data to Shaders
     var numLightsToPass = Math.min(inputLights.length, MAX_LIGHTS);
     gl.uniform1i(numLightsUniform, numLightsToPass);
     gl.uniformMatrix4fv(vMatrixUniform, false, vMatrix);
@@ -555,33 +593,27 @@ function renderTriangles() {
         gl.uniform3fv(lightUniforms[l].specular, light.specular);
     }
 
-    // Render each triangle set using its updated model matrix
     for (var i = 0; i < triangleSets.length; i++) {
         var tSet = triangleSets[i];
 
         var mMatrix = mat4.create();
-        
-        // 1. Move model by user-applied translation
         mat4.translate(mMatrix, mMatrix, tSet.translation);
-
-        // 2. Translate to centroid so rotations happen around object's local center
         mat4.translate(mMatrix, mMatrix, tSet.center);
 
-        // 3. Apply 20% highlight scaling if selected
         if (tSet.isHighlighted) {
             mat4.scale(mMatrix, mMatrix, vec3.fromValues(1.2, 1.2, 1.2));
         }
 
-        // 4. Apply accumulated view-space rotations
         mat4.multiply(mMatrix, mMatrix, tSet.rotationMatrix);
 
-        // 5. Translate back from centroid
         var negCenter = vec3.create();
         vec3.negate(negCenter, tSet.center);
         mat4.translate(mMatrix, mMatrix, negCenter);
 
         // Model-View Matrix = View Matrix * Model Matrix
         mat4.multiply(mvMatrix, vMatrix, mMatrix);
+
+        // Calculate 3x3 Inverse Transpose matrix of MV Matrix for vertex normals[cite: 7]
         mat3.normalFromMat4(nMatrix, mvMatrix);
 
         gl.uniformMatrix4fv(pMatrixUniform, false, pMatrix);
